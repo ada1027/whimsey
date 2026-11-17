@@ -1,0 +1,182 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: <html class="dark"> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- Design tokens: light ---------- */
+:root {
+  --bg: #e7e1ff;
+  --surface: #ffffff;
+  --surface-2: #f1edff;
+  --surface-3: #ddd4ff;
+  --outline: #1a1033;      /* thick cartoon outline */
+  --ink: #1a1033;
+  --muted: #5d5584;
+  --on-accent: #1a1033;    /* text on gold / neon / blue fills */
+  --gold: #ffc21a;
+  --pink: #ff3d8b;
+  --blue: #22aaff;
+  --neon: #2ee87a;
+  --grape: #8b5cff;
+  color-scheme: light;
+}
+
+/* ---------- Design tokens: dark ---------- */
+.dark {
+  --bg: #0f0a26;
+  --surface: #1d1547;
+  --surface-2: #281e5e;
+  --surface-3: #372b7c;
+  --outline: #05020f;
+  --ink: #ffffff;
+  --muted: #b3a9e6;
+  --gold: #ffc928;
+  --pink: #ff3d8b;
+  --blue: #2fb4ff;
+  --neon: #3dff8f;
+  --grape: #9b6dff;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-outline: var(--outline);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-on-accent: var(--on-accent);
+  --color-gold: var(--gold);
+  --color-pink: var(--pink);
+  --color-blue: var(--blue);
+  --color-neon: var(--neon);
+  --color-grape: var(--grape);
+  --font-display: "Lilita One", ui-rounded, system-ui, sans-serif;
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+}
+
+@theme {
+  --animate-pop: pop 0.35s cubic-bezier(.2, 1.6, .4, 1) both;
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-wiggle: wiggle 0.5s ease-in-out;
+  --animate-toast: toast-in 0.25s cubic-bezier(.2, 1.4, .4, 1) both;
+  --animate-sheet: sheet-up 0.3s cubic-bezier(.2, 1.1, .4, 1) both;
+  --animate-fill: fill 0.9s cubic-bezier(.3, .9, .3, 1) both;
+  --animate-spin-slow: spin 40s linear infinite;
+  @keyframes pop { 0% { transform: scale(.5); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
+  @keyframes float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+  @keyframes wiggle { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(-6deg) } 75% { transform: rotate(6deg) } }
+  @keyframes toast-in { 0% { transform: translateY(16px) scale(.9); opacity: 0 } 100% { transform: none; opacity: 1 } }
+  @keyframes fill { from { width: 0 } }
+  @keyframes sheet-up { from { transform: translateY(100%) } to { transform: none } }
+}
+
+@keyframes burst {
+  0% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1 }
+  100% { transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(.6); opacity: 0 }
+}
+.confetti { animation: burst 1.2s cubic-bezier(.15, .7, .3, 1) forwards; }
+
+html, body, #root { min-height: 100%; }
+body { overflow: hidden; }
+@media (min-width: 40rem) { body { overflow: auto; } }
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+  /* backdrop around the phone frame on larger screens */
+  background-image:
+    radial-gradient(circle at 20% 10%, color-mix(in oklab, var(--grape) 28%, transparent), transparent 45%),
+    radial-gradient(circle at 85% 90%, color-mix(in oklab, var(--pink) 18%, transparent), transparent 40%);
+  background-attachment: fixed;
+}
+
+/* dotted game-board texture inside the phone screen */
+@utility screen-bg {
+  background-image: radial-gradient(color-mix(in oklab, var(--ink) 9%, transparent) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+
+/* ---------- Arcade primitives ---------- */
+
+/* Chunky card: thick outline + hard drop shadow */
+@utility card {
+  border: 3px solid var(--outline);
+  border-radius: 1.5rem;
+  background: var(--surface);
+  box-shadow: 0 6px 0 0 var(--outline);
+}
+
+/* 3D game button: inner bevel + hard shadow that collapses on press */
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  border: 3px solid var(--outline);
+  border-radius: 1rem;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  box-shadow: inset 0 -5px 0 rgb(0 0 0 / .22), inset 0 3px 0 rgb(255 255 255 / .35), 0 5px 0 0 var(--outline);
+  transition: transform .08s, box-shadow .08s, filter .15s;
+  cursor: pointer;
+  user-select: none;
+  &:hover:not(:disabled) { filter: brightness(1.08); }
+  &:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: inset 0 -2px 0 rgb(0 0 0 / .22), inset 0 2px 0 rgb(255 255 255 / .3), 0 1px 0 0 var(--outline);
+  }
+  &:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+  &:disabled { opacity: .45; cursor: not-allowed; }
+}
+@utility btn-gold { background: var(--gold); color: var(--on-accent); }
+@utility btn-neon { background: var(--neon); color: var(--on-accent); }
+@utility btn-blue { background: var(--blue); color: var(--on-accent); }
+@utility btn-pink { background: var(--pink); color: #fff; text-shadow: 0 2px 0 rgb(0 0 0 / .35); }
+@utility btn-grape { background: var(--grape); color: #fff; text-shadow: 0 2px 0 rgb(0 0 0 / .35); }
+@utility btn-ghost { background: var(--surface-2); color: var(--ink); }
+
+/* Loot / badge pill */
+@utility pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  border: 2px solid var(--outline);
+  border-radius: .6rem;
+  padding: .05rem .45rem;
+  font-family: var(--font-display);
+  font-size: .72rem;
+  line-height: 1.15rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / .18), 0 2px 0 var(--outline);
+}
+
+/* White title text with a heavy cartoon outline */
+@utility title-stroke {
+  font-family: var(--font-display);
+  color: #fff;
+  letter-spacing: .02em;
+  text-shadow:
+    0 4px 0 var(--outline),
+    2px 0 0 var(--outline), -2px 0 0 var(--outline), 0 2px 0 var(--outline), 0 -2px 0 var(--outline),
+    2px 2px 0 var(--outline), -2px 2px 0 var(--outline), 2px -2px 0 var(--outline), -2px -2px 0 var(--outline);
+}
+
+/* Arcade "stage" backdrop with light rays (same in both themes) */
+@utility stage {
+  color: #fff;
+  background:
+    radial-gradient(circle at 50% 58%, rgb(255 255 255 / .2), transparent 55%),
+    repeating-conic-gradient(from 0deg at 50% 58%, rgb(255 255 255 / .07) 0deg 9deg, transparent 9deg 18deg),
+    linear-gradient(160deg, #6a4cff 0%, #3a24b8 55%, #22146b 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
