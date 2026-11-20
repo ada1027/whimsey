@@ -1,5 +1,6 @@
-import { Camera, FileCheck2, ImagePlus, Send, Upload, Video } from 'lucide-react'
+import { Camera, FileCheck2, ImagePlus, Send, Upload, User, Users, Video } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useOnline } from '../context/OnlineContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { QuestMeta } from './QuestBits.jsx'
 import { Modal } from './ui.jsx'
@@ -18,8 +19,11 @@ const formatSize = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max
 /** Asks for a (mock) photo/video before a quest is completed. Nothing is uploaded. */
 export default function ProofModal({ quest, onClose }) {
   const { completeQuest } = useUser()
+  const { submitGroupProof } = useOnline()
   const inputRef = useRef(null)
-  const [proof, setProof] = useState(null) // { name, type, size, kind, url?, sample? }
+  const [proof, setProof] = useState(null) // { name, type, size, kind, url?, sample?, file? }
+  const [mode, setMode] = useState('together') // group quests: 'together' | 'separate'
+  const isPartyQuest = !!quest.partyId
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -33,15 +37,22 @@ export default function ProofModal({ quest, onClose }) {
     if (!kind) return setError('Please choose a photo or video file.')
     if (file.size > MAX_BYTES) return setError('That file is over 100 MB.')
     setError('')
-    setProof({ name: file.name, type: file.type, size: file.size, kind, url: URL.createObjectURL(file) })
+    setProof({ name: file.name, type: file.type, size: file.size, kind, url: URL.createObjectURL(file), file })
   }
 
   const submit = () => {
     if (!proof || submitting) return
     setSubmitting(true)
-    // Simulate a short upload, then award XP + coins (reward overlay takes over).
+    const { name, type, size, kind, sample = false, file } = proof
+    if (isPartyQuest) {
+      // Award locally right away, then upload + sync completion to the party.
+      completeQuest(quest.id, { name, type, size, kind, sample, mode })
+      onClose()
+      submitGroupProof({ partyId: quest.partyId, mode, file: sample ? null : file, sampleName: sample ? name : null })
+      return
+    }
+    // Solo quests: short fake "verifying" delay, then award XP + coins (reward overlay takes over).
     setTimeout(() => {
-      const { name, type, size, kind, sample = false } = proof
       completeQuest(quest.id, { name, type, size, kind, sample })
       onClose()
     }, 800)
@@ -90,6 +101,24 @@ export default function ProofModal({ quest, onClose }) {
 
       {error && <p role="alert" className="mt-2 pill bg-pink px-2 py-1 text-xs normal-case tracking-normal text-white">{error}</p>}
 
+      {isPartyQuest && (
+        <fieldset className="mt-4">
+          <legend className="mb-2 font-display text-sm uppercase tracking-widest text-muted">How is your party completing it?</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { id: 'together', icon: Users, label: 'Together', hint: 'One photo counts for the whole party' },
+              { id: 'separate', icon: User, label: 'Separately', hint: 'Everyone submits their own proof' },
+            ].map(({ id, icon: Icon, label, hint }) => (
+              <button key={id} type="button" onClick={() => setMode(id)} aria-pressed={mode === id}
+                className={`rounded-xl border-[3px] border-outline p-2 text-left transition ${mode === id ? 'bg-blue text-on-accent shadow-[0_4px_0_var(--outline)]' : 'bg-surface-2'}`}>
+                <span className="flex items-center gap-1.5 font-display uppercase"><Icon size={16} strokeWidth={3} /> {label}</span>
+                <span className="block text-[11px] font-bold opacity-80">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <p className="mb-2 mt-4 font-display text-sm uppercase tracking-widest text-muted">Or use a sample file</p>
       <div className="grid grid-cols-3 gap-2">
         {SAMPLES.map((s) => {
@@ -118,7 +147,8 @@ export default function ProofModal({ quest, onClose }) {
         )}
       </button>
       <p className="mt-3 flex items-center justify-center gap-1 text-[11px] font-bold text-muted">
-        <FileCheck2 size={12} /> Prototype: files stay on your device and are never uploaded.
+        <FileCheck2 size={12} />
+        {isPartyQuest ? 'Photos are uploaded so your party can see them.' : 'Solo proof stays on your device.'}
       </p>
     </Modal>
   )

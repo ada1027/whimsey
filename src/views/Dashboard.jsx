@@ -2,6 +2,7 @@ import { Check, CircleHelp, ClipboardList, Coins, Flame, Gamepad2, Play, Plus, S
 import Character from '../components/Character.jsx'
 import CurrentQuestCard from '../components/CurrentQuestCard.jsx'
 import { useToast } from '../context/ToastContext.jsx'
+import { useOnline } from '../context/OnlineContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { FILL } from '../data/tones.js'
 
@@ -11,7 +12,8 @@ import { FILL } from '../data/tones.js'
  *   [ PLAY ] [ CURRENT TASK ] [ GAMEMODE ]
  */
 export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
-  const { profile, look, title, activeQuests, completedQuests, currentQuest: current, party } = useUser()
+  const { profile, look, title, activeQuests, completedQuests, currentQuest: current } = useUser()
+  const { party, inParty } = useOnline()
   const toast = useToast()
   const pro = profile.gamemode === 'pro'
 
@@ -62,7 +64,7 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
           {/* right column: friends / guild */}
           <div className="flex flex-col gap-4 self-start pt-6">
             <SideTile icon={Users} label="Friends" tone="pink" onClick={() => onNavigate('social')}
-              badge={party.members.length ? `${party.members.length + 1}` : null} />
+              badge={inParty ? `${party.members.length}` : null} />
             {pro && (
               <SideTile icon={Shield} label="Guild" tone="neon"
                 onClick={() => toast('Guilds are coming soon!', { tone: 'neon', icon: Shield })} />

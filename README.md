@@ -17,14 +17,28 @@ npm run dev
 
 The quest in progress is pinned at the top of Home and Quests (glowing **Current quest in progress** card with **Complete & submit proof**). Accepting from the board shows a **Quest accepted!** banner; PLAY and group quests jump straight to it.
 
+## Multiplayer sync (Supabase)
+
+Without keys the app runs in **local mode**: the same tables live in your browser's storage and sync between tabs (open a second tab and log in as another adventurer to test). With Supabase, profiles, friends, parties, ready-ups, votes and proof photos sync live across devices.
+
+1. Create a free project at supabase.com.
+2. **SQL Editor → New query**, paste all of `supabase_schema.sql`, click **Run**.
+3. **Project Settings → API**: copy the Project URL and the `anon` public key.
+4. Copy `.env.example` to `.env.local` and paste both values, then restart `npm run dev`.
+5. On Vercel/Netlify add the same two variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) and redeploy.
+
+⚠️ The schema uses open prototype policies: anyone with the app can read/write all rows and upload proofs. Don't use real personal data.
+
 Gamemode (Home › Gamemode, or the ☰ menu): **Simple** vs **Pro** (adds daily tasks, mystery event, ranks, guild, shop).
 
 ## Structure
-- `src/context/UserContext.jsx` – all game state (reducer), persisted to `localStorage`.
+- `src/context/UserContext.jsx` – local game state (quests, locker, XP), saved per adventurer in `localStorage`.
+- `src/context/SessionContext.jsx` – pick/create adventurer; `OnlineContext.jsx` – live friends, party, voting, bots, profile sync.
+- `src/lib/db.js` – data layer (Supabase or local mock); `src/lib/api.js` – game operations; `supabase_schema.sql` – database setup.
 - `src/data/seed.js` – quests, locker items, mock friends, starter profile.
 - `src/components/Character.jsx` – SVG character built from the equipped look.
 - `src/components/` – StatusBar, NavBar, QuestCard, ProofModal, RewardOverlay, PlayModal, GamemodeModal, ui primitives.
 - `src/views/` – Dashboard (home), Quests, Social, Profile.
 - `src/index.css` – theme tokens (dark/light) and arcade utilities: `card`, `btn btn-gold|pink|blue|neon|grape|ghost`, `pill`, `title-stroke`, `stage`.
 
-Everything is local: no files are uploaded and no friend requests are sent.
+Solo quest proof stays on the device; group quest proof is uploaded to the `quest-proofs` bucket (Supabase mode).

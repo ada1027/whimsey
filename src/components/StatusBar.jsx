@@ -1,5 +1,6 @@
-import { Gamepad2, Map, Menu, Moon, RotateCcw, ShoppingBag, Sun } from 'lucide-react'
+import { Cloud, Gamepad2, HardDrive, LogOut, Map, Menu, Moon, RotateCcw, ShoppingBag, Sun } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useSession } from '../context/SessionContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
@@ -65,6 +66,7 @@ function IconBtn({ label, onClick, children, tone = 'btn-ghost' }) {
 function MainMenu({ onOpenGamemode }) {
   const { theme, toggleTheme } = useTheme()
   const { profile, resetProfile } = useUser()
+  const { logout, mode } = useSession()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -84,7 +86,10 @@ function MainMenu({ onOpenGamemode }) {
         <Menu size={18} strokeWidth={2.75} />
       </IconBtn>
       {open && (
-        <div role="menu" className="card absolute right-0 top-12 w-60 animate-pop p-2">
+        <div role="menu" className="card absolute right-0 top-12 w-64 animate-pop p-2">
+          <p className="flex items-center gap-2 px-3 pb-1 pt-1.5 text-xs font-extrabold uppercase tracking-wider text-muted">
+            {mode === 'supabase' ? <><Cloud size={14} /> Live sync · Supabase</> : <><HardDrive size={14} /> Local mode · this browser only</>}
+          </p>
           <button role="menuitem" className={item} onClick={toggleTheme}>
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} {theme === 'dark' ? 'Light mode' : 'Dark mode'}
           </button>
@@ -97,6 +102,9 @@ function MainMenu({ onOpenGamemode }) {
             onClick={() => { setOpen(false); if (confirm('Reset all progress?')) resetProfile() }}
           >
             <RotateCcw size={18} /> Reset progress
+          </button>
+          <button role="menuitem" className={item} onClick={() => { setOpen(false); logout() }}>
+            <LogOut size={18} /> Switch adventurer
           </button>
         </div>
       )}

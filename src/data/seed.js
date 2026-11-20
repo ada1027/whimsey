@@ -113,56 +113,36 @@ export const DEFAULT_EQUIPPED = {
   color: 'color-cream', face: 'face-classic', hat: 'hat-none', item: 'item-bat', title: 'title-rookie',
 }
 
-/* ---------- Social (mock) ---------- */
-
-export const SEED_FRIENDS = [
-  { id: 'f1', name: 'Pixel', level: 7, status: 'online', note: 'On a quest: Dragon Walk', xpWeek: 640,
-    look: { color: '#7dffc0', face: 'happy', hat: 'cap', item: 'flag' } },
-  { id: 'f2', name: 'Moonbeam', level: 5, status: 'online', note: 'In a lobby — looking for more', xpWeek: 410,
-    look: { color: '#bba2ff', face: 'star', hat: 'wizard', item: 'wand' } },
-  { id: 'f3', name: 'Bolt', level: 4, status: 'online', note: 'In a lobby', xpWeek: 285,
-    look: { color: '#7cd3ff', face: 'determined', hat: 'headband', item: 'bottle' } },
-  { id: 'f4', name: 'Inky', level: 2, status: 'offline', note: 'Last seen 3h ago', xpWeek: 120,
-    look: { color: '#ff9ccb', face: 'sleepy', hat: 'none', item: 'book' } },
-]
-
-/** Players who aren't friends: lobby members and matchmaking randoms. */
-export const RANDOM_PLAYERS = [
-  { id: 'r1', name: 'Sprout', level: 3, look: { color: '#7dffc0', face: 'classic', hat: 'party', item: 'brush' } },
-  { id: 'r2', name: 'Nova', level: 6, look: { color: '#ffd23f', face: 'determined', hat: 'crown', item: 'bat' } },
-  { id: 'r3', name: 'Pip', level: 2, look: { color: '#ff9ccb', face: 'happy', hat: 'cap', item: 'bottle' } },
-  { id: 'r4', name: 'Juniper', level: 4, look: { color: '#7cd3ff', face: 'star', hat: 'none', item: 'book' } },
-  { id: 'r5', name: 'Taco', level: 5, look: { color: '#fff1d6', face: 'happy', hat: 'headband', item: 'wand' } },
-]
+/* ---------- Social / multiplayer ---------- */
 
 export const MAX_PARTY_SIZE = 4 // including you
-
-/** Friends' open lobbies you can join. memberIds include the leader. */
-export const SEED_LOBBIES = [
-  { id: 'lobby-moonbeam', leaderId: 'f2', memberIds: ['f2', 'r1'], vibe: 'Creative crew · craft quests' },
-  { id: 'lobby-bolt', leaderId: 'f3', memberIds: ['f3'], vibe: 'Quick body quests · chill' },
-]
-
-const PLAYER_BY_ID = Object.fromEntries([...SEED_FRIENDS, ...RANDOM_PLAYERS].map((p) => [p.id, p]))
-
-/** A small snapshot of a player for party slots. */
-export const playerSnapshot = (id) => {
-  const p = PLAYER_BY_ID[id]
-  return p ? { id: p.id, name: p.name, level: p.level, look: p.look } : null
-}
-
 export const PARTY_BONUS = 0.5 // +50% XP on group quests
+export const MAX_REROLLS = 3 // per group-queue round
 
-/** Shared activities that matchmaking can pop. */
+/** Shared activities a group queue can pop. */
 export const GROUP_QUESTS = [
   { key: 'stretch', title: 'Group Stretch Break', description: 'Everyone stretches for 5 minutes at the same time.', category: 'body', difficulty: 'easy', minutes: 5 },
   { key: 'sketch', title: 'Coffee & Sketch Together', description: 'Grab a drink and sketch the same object, then share.', category: 'craft', difficulty: 'medium', minutes: 15 },
   { key: 'walk', title: 'Squad Walk', description: 'Each take a 15-minute walk and snap one cool thing you see.', category: 'body', difficulty: 'medium', minutes: 15 },
   { key: 'gratitude', title: 'Gratitude Round', description: 'Each share one thing you are grateful for today.', category: 'social', difficulty: 'easy', minutes: 5 },
   { key: 'tidy', title: 'Speed Tidy Challenge', description: 'Race to tidy one room in 10 minutes.', category: 'life', difficulty: 'easy', minutes: 10 },
+  { key: 'water', title: 'Hydration Toast', description: 'Everyone drinks a full glass of water — cheers on camera!', category: 'body', difficulty: 'easy', minutes: 2 },
 ]
 
-export const SOLO_PARTY = { leaderId: 'me', members: [], lobbyId: null }
+/** "Seed 8 sample users": searchable bot profiles that auto-accept friend requests. */
+export const SAMPLE_USERS = [
+  { username: 'Pixel', level: 7, xp: 120, coins: 210, streak: 12, look: { color: '#7dffc0', face: 'happy', hat: 'cap', item: 'flag' } },
+  { username: 'Moonbeam', level: 5, xp: 80, coins: 150, streak: 6, look: { color: '#bba2ff', face: 'star', hat: 'wizard', item: 'wand' } },
+  { username: 'Bolt', level: 4, xp: 60, coins: 95, streak: 3, look: { color: '#7cd3ff', face: 'determined', hat: 'headband', item: 'bottle' } },
+  { username: 'Inky', level: 2, xp: 40, coins: 30, streak: 1, look: { color: '#ff9ccb', face: 'sleepy', hat: 'none', item: 'book' } },
+  { username: 'Sprout', level: 3, xp: 10, coins: 55, streak: 4, look: { color: '#7dffc0', face: 'classic', hat: 'party', item: 'brush' } },
+  { username: 'Nova', level: 6, xp: 150, coins: 180, streak: 9, look: { color: '#ffd23f', face: 'determined', hat: 'crown', item: 'bat' } },
+  { username: 'Juniper', level: 4, xp: 20, coins: 70, streak: 2, look: { color: '#7cd3ff', face: 'star', hat: 'none', item: 'book' } },
+  { username: 'Taco', level: 5, xp: 30, coins: 120, streak: 5, look: { color: '#fff1d6', face: 'happy', hat: 'headband', item: 'wand' } },
+]
+
+/** Names for extra simulated teammates when the sample bots are busy. */
+export const BOT_NAMES = ['Biscuit', 'Comet', 'Pebble', 'Ziggy', 'Maple', 'Rook', 'Waffle', 'Echo']
 
 export const DEFAULT_PROFILE = {
   username: 'Adventurer',
@@ -177,6 +157,4 @@ export const DEFAULT_PROFILE = {
   equipped: DEFAULT_EQUIPPED,
   purchased: [],
   quests: SEED_QUESTS,
-  friends: SEED_FRIENDS,
-  party: SOLO_PARTY,
 }

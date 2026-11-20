@@ -3,13 +3,15 @@ import { useState } from 'react'
 import Character, { GearIcon } from '../components/Character.jsx'
 import { PageTitle, Pill, SectionTitle, XPBar } from '../components/ui.jsx'
 import { useToast } from '../context/ToastContext.jsx'
+import { useOnline } from '../context/OnlineContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { ACTIVITY_TAGS, isOwned, ITEMS, SLOTS } from '../data/seed.js'
 
 const SLOT_ICONS = { color: Sparkles, face: Smile, hat: Crown, item: Wand2, title: Tag }
 
 export default function Profile() {
-  const { profile, look, title, completedQuests, rank } = useUser()
+  const { profile, look, title, completedQuests } = useUser()
+  const { rank } = useOnline()
 
   return (
     <div className="space-y-5">

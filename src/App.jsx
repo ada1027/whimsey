@@ -2,17 +2,44 @@ import { BatteryFull, Signal, Wifi } from 'lucide-react'
 import { useRef, useState } from 'react'
 import AcceptedBanner from './components/AcceptedBanner.jsx'
 import GamemodeModal from './components/GamemodeModal.jsx'
+import LoginScreen from './components/LoginScreen.jsx'
 import NavBar from './components/NavBar.jsx'
+import PartyVoteModal from './components/PartyVoteModal.jsx'
 import PlayModal from './components/PlayModal.jsx'
 import RewardOverlay from './components/RewardOverlay.jsx'
 import StatusBar from './components/StatusBar.jsx'
+import { OnlineProvider } from './context/OnlineContext.jsx'
+import { GUEST_STORE_KEY, userStoreKey, useSession } from './context/SessionContext.jsx'
 import { ToastViewport } from './context/ToastContext.jsx'
+import { UserProvider } from './context/UserContext.jsx'
 import Dashboard from './views/Dashboard.jsx'
 import Profile from './views/Profile.jsx'
 import Quests from './views/Quests.jsx'
 import Social from './views/Social.jsx'
 
 export default function App() {
+  const { session } = useSession()
+  // Each adventurer has their own local save; remounting resets all screen state on switch.
+  const storageKey = session ? userStoreKey(session.userId) : GUEST_STORE_KEY
+  return (
+    <UserProvider key={storageKey} storageKey={storageKey}>
+      <PhoneFrame>
+        {session ? (
+          <OnlineProvider key={session.userId}>
+            <Game />
+          </OnlineProvider>
+        ) : (
+          <>
+            <LoginScreen />
+            <ToastViewport />
+          </>
+        )}
+      </PhoneFrame>
+    </UserProvider>
+  )
+}
+
+function Game() {
   const [route, setRoute] = useState({ view: 'dashboard', params: {}, key: 0 })
   const [modal, setModal] = useState(null) // 'play' | 'gamemode' | null
   const screenRef = useRef(null)
@@ -24,7 +51,29 @@ export default function App() {
   const shared = { onNavigate: navigate, onOpenPlay: () => setModal('play'), onOpenGamemode: () => setModal('gamemode') }
 
   return (
-    // On real phones the app fills the screen; on larger screens it sits in a phone frame.
+    <>
+    <StatusBar {...shared} />
+    <main ref={screenRef} className="screen-bg flex-1 overflow-y-auto overscroll-contain px-4 pb-8 pt-5 [scrollbar-width:none]">
+      {route.view === 'dashboard' && <Dashboard {...shared} />}
+      {route.view === 'quests' && <Quests key={route.key} initialTab={route.params.tab} />}
+      {route.view === 'social' && <Social onNavigate={navigate} />}
+      {route.view === 'profile' && <Profile />}
+    </main>
+    <NavBar view={route.view} onChange={navigate} />
+
+    <ToastViewport />
+    <AcceptedBanner onNavigate={navigate} />
+    {modal === 'play' && <PlayModal onClose={() => setModal(null)} onNavigate={navigate} />}
+    {modal === 'gamemode' && <GamemodeModal onClose={() => setModal(null)} />}
+    <RewardOverlay onNavigate={navigate} />
+    <PartyVoteModal />
+    </>
+  )
+}
+
+/** On real phones the app fills the screen; on larger screens it sits in a phone frame. */
+function PhoneFrame({ children }) {
+  return (
     <div className="flex min-h-dvh items-center justify-center sm:p-6">
       {/* translateZ(0) makes this the containing block for every `fixed` overlay (modals,
           reward screen), so they stay inside the phone instead of covering the whole window. */}
@@ -34,20 +83,7 @@ export default function App() {
                    sm:shadow-[0_0_0_2px_#3a2d80,0_40px_80px_-24px_rgb(0_0_0/.7),0_0_140px_-20px_rgb(139_92_255/.45)]"
       >
         <DeviceBar />
-        <StatusBar {...shared} />
-        <main ref={screenRef} className="screen-bg flex-1 overflow-y-auto overscroll-contain px-4 pb-8 pt-5 [scrollbar-width:none]">
-          {route.view === 'dashboard' && <Dashboard {...shared} />}
-          {route.view === 'quests' && <Quests key={route.key} initialTab={route.params.tab} />}
-          {route.view === 'social' && <Social onNavigate={navigate} />}
-          {route.view === 'profile' && <Profile />}
-        </main>
-        <NavBar view={route.view} onChange={navigate} />
-
-        <ToastViewport />
-        <AcceptedBanner onNavigate={navigate} />
-        {modal === 'play' && <PlayModal onClose={() => setModal(null)} onNavigate={navigate} />}
-        {modal === 'gamemode' && <GamemodeModal onClose={() => setModal(null)} />}
-        <RewardOverlay onNavigate={navigate} />
+        {children}
       </div>
     </div>
   )
