@@ -1,6 +1,7 @@
 import { FlagOff, Send, TimerOff, Users } from 'lucide-react'
 import { useState } from 'react'
 import { useUser } from '../context/UserContext.jsx'
+import { QUEST_TYPE_LABEL } from '../data/seed.js'
 import ProofModal from './ProofModal.jsx'
 import { CategoryTile, Countdown, MemberHeads, PenaltyLine, QuestMeta } from './QuestBits.jsx'
 import { Modal } from './ui.jsx'
@@ -92,7 +93,7 @@ export function ActiveQuestSheet({ onClose }) {
   if (!quest) return null
   if (proofOpen) return <ProofModal quest={quest} onClose={() => { setProofOpen(false); onClose() }} />
   return (
-    <Modal onClose={onClose} title="Active quest" eyebrow={quest.group ? 'Group quest' : 'Daily quest'}>
+    <Modal onClose={onClose} title="Active quest" eyebrow={QUEST_TYPE_LABEL[quest.type] ?? 'Quest'}>
       <ActiveQuestBody quest={quest} onProofOpen={() => setProofOpen(true)} />
     </Modal>
   )

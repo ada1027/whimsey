@@ -1,6 +1,9 @@
-import { Check, CircleHelp, ClipboardList, Coins, Flame, Gamepad2, Play, Plus, Shield, Target, Trophy, Users } from 'lucide-react'
+import { CalendarCheck, Check, CircleHelp, ClipboardList, Dices, Coins, Flame, Gamepad2, Play, Plus, Shield, Target, Trophy, Users } from 'lucide-react'
 import Character from '../components/Character.jsx'
 import CurrentQuestCard from '../components/CurrentQuestCard.jsx'
+import FriendFeed from '../components/FriendFeed.jsx'
+import { CategoryTile, Countdown } from '../components/QuestBits.jsx'
+import { ROLLS_PER_DAY } from '../data/seed.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useOnline } from '../context/OnlineContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
@@ -12,7 +15,7 @@ import { FILL } from '../data/tones.js'
  *   [ PLAY ] [ CURRENT TASK ] [ GAMEMODE ]
  */
 export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode, onOpenActive }) {
-  const { profile, look, title, dailies, completedQuests, activeQuest: current } = useUser()
+  const { profile, look, title, dailies, completedQuests, activeQuest: current, rollsLeft } = useUser()
   const dailiesLeft = dailies.filter((d) => !d.attempt).length
   const { party, inParty } = useOnline()
   const toast = useToast()
@@ -76,9 +79,14 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode, onOp
 
       {/* ---------- Action row ---------- */}
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={onOpenPlay} className="btn btn-gold col-span-2 h-24 flex-col gap-0 rounded-3xl">
+        <button onClick={onOpenPlay} className="btn btn-gold relative col-span-2 h-28 flex-col gap-0.5 rounded-3xl">
           <span className="flex items-center gap-2 text-5xl leading-none"><Play size={36} fill="currentColor" strokeWidth={2.5} /> Play</span>
-          <span className="font-sans text-xs font-extrabold normal-case tracking-normal">{current ? 'Finish your active quest first' : 'Spin a random daily'}</span>
+          <span className="font-sans text-xs font-extrabold normal-case tracking-normal">
+            {current ? 'Finish your active quest first' : rollsLeft ? 'Roll a random whimsical quest' : 'Out of rolls — back tomorrow'}
+          </span>
+          <span className="pill mt-1 bg-surface text-ink [text-shadow:none]">
+            <Dices size={12} strokeWidth={3} /> Rolls left today: {rollsLeft}/{ROLLS_PER_DAY}
+          </span>
         </button>
 
         <button
@@ -97,6 +105,10 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode, onOp
         </button>
       </div>
 
+      <DailiesPreview dailies={dailies} onOpen={() => onNavigate('quests', { tab: 'dailies' })} />
+
+      <FriendFeed limit={8} />
+
       {/* ---------- Quick stats ---------- */}
       <div className="grid grid-cols-2 gap-3">
         <Stat icon={Trophy} label="Level" value={profile.level} tone="grape" />
@@ -106,6 +118,36 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode, onOp
       </div>
 
     </div>
+  )
+}
+
+/** Compact view of today's 3 dailies. */
+function DailiesPreview({ dailies, onOpen }) {
+  const done = dailies.filter((d) => d.attempt?.status === 'completed').length
+  return (
+    <section className="card p-3.5" aria-label="Today's dailies">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-display text-xl uppercase"><CalendarCheck size={20} /> Today&apos;s dailies</h2>
+        <span className="pill bg-surface-3 text-ink">{done}/{dailies.length} done</span>
+      </div>
+      <ul className="space-y-2">
+        {dailies.map((d) => {
+          const a = d.attempt
+          return (
+            <li key={d.id}>
+              <button onClick={onOpen} className="flex w-full items-center gap-2.5 rounded-xl border-[3px] border-outline bg-surface-2 p-1.5 pr-2.5 text-left transition hover:-translate-y-0.5">
+                <div className="-m-1.5 scale-[.7]"><CategoryTile category={d.category} /></div>
+                <span className={`min-w-0 flex-1 truncate font-display ${a && a.status !== 'active' ? 'text-muted line-through' : ''}`}>{d.title}</span>
+                {a?.status === 'completed' ? <span className="pill bg-neon text-on-accent">Done</span>
+                  : a?.status === 'failed' ? <span className="pill bg-pink text-white">Failed</span>
+                    : a?.status === 'active' ? <Countdown expiresAt={a.expiresAt} />
+                      : <span className="pill bg-grape text-white">+{d.xp} XP</span>}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 

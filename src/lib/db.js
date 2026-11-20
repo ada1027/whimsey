@@ -8,7 +8,7 @@
 
 import { isSupabaseConfigured, PROOF_BUCKET, supabase } from './supabase.js'
 
-export const TABLES = ['profiles', 'friendships', 'parties', 'party_members']
+export const TABLES = ['profiles', 'friendships', 'parties', 'party_members', 'quest_feed']
 
 /* ------------------------------------------------------------------ */
 /* Supabase                                                            */
@@ -45,12 +45,20 @@ const supabaseAdapter = {
   async update(table, patch, f) {
     return check(await applyFilter(supabase.from(table).update(patch), f).select())
   },
+  /** Insert, silently skipping rows that hit the unique constraint on `onConflict` columns. */
+  async insertIgnore(table, rows, onConflict) {
+    return check(await supabase.from(table).upsert(rows, { onConflict, ignoreDuplicates: true }).select())
+  },
   async remove(table, f) {
     check(await applyFilter(supabase.from(table).delete(), f))
   },
   /** Atomic vote write (see cast_vote in supabase_schema.sql) so simultaneous votes don't overwrite each other. */
   async castVote(partyId, userId, vote) {
     check(await supabase.rpc('cast_vote', { p_party_id: partyId, p_user_id: userId, p_vote: vote }))
+  },
+  /** Atomic reaction toggle (see toggle_reaction in supabase_schema.sql). */
+  async toggleReaction(postId, userId, kind) {
+    check(await supabase.rpc('toggle_reaction', { p_post_id: postId, p_user_id: userId, p_kind: kind }))
   },
   async upload(path, file) {
     check(await supabase.storage.from(PROOF_BUCKET).upload(path, file, { upsert: true, contentType: file.type }))
@@ -81,12 +89,17 @@ const DEFAULTS = {
   friendships: () => ({ id: uuid(), status: 'pending', created_at: now() }),
   parties: () => ({ id: uuid(), status: 'lobby', current_quest: null, rerolls_used: 0, votes: {}, created_at: now(), updated_at: now() }),
   party_members: () => ({ id: uuid(), is_ready: false, has_completed: false, completion_mode: null, proof_url: null, joined_at: now() }),
+  quest_feed: () => ({ id: uuid(), proof_url: null, completion_tag: null, duration_seconds: null, reactions: {}, category: null, party: null, created_at: now() }),
 }
 
 function readDb() {
   try {
     const raw = localStorage.getItem(MOCK_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const db = JSON.parse(raw)
+      for (const t of TABLES) db[t] ??= [] // tables added in later versions
+      return db
+    }
   } catch { /* ignore */ }
   return Object.fromEntries(TABLES.map((t) => [t, []]))
 }
@@ -110,7 +123,8 @@ function uniqueViolation(db, table, row, ignoreId) {
   const clash =
     (table === 'profiles' && others.some((r) => r.username.toLowerCase() === row.username?.toLowerCase())) ||
     (table === 'party_members' && others.some((r) => r.user_id === row.user_id)) ||
-    (table === 'friendships' && others.some((r) => r.user_id === row.user_id && r.friend_id === row.friend_id))
+    (table === 'friendships' && others.some((r) => r.user_id === row.user_id && r.friend_id === row.friend_id)) ||
+    (table === 'quest_feed' && others.some((r) => r.user_id === row.user_id && r.quest_ref === row.quest_ref))
   if (clash) {
     const e = new Error(`duplicate key value violates unique constraint on ${table}`)
     e.code = '23505'
@@ -139,6 +153,13 @@ const mockAdapter = {
     writeDb(db, table)
     return clone(list)
   },
+  async insertIgnore(table, rows) {
+    const out = []
+    for (const r of Array.isArray(rows) ? rows : [rows]) {
+      try { out.push(...(await this.insert(table, r))) } catch (e) { if (e.code !== '23505') throw e }
+    }
+    return out
+  },
   async update(table, patch, f) {
     const db = readDb()
     const out = []
@@ -165,6 +186,7 @@ const mockAdapter = {
       const ids = removed.map((p) => p.id)
       db.friendships = db.friendships.filter((x) => !ids.includes(x.user_id) && !ids.includes(x.friend_id))
       db.party_members = db.party_members.filter((m) => !ids.includes(m.user_id))
+      db.quest_feed = db.quest_feed.filter((x) => !ids.includes(x.user_id))
     }
     writeDb(db, table)
   },
@@ -172,6 +194,16 @@ const mockAdapter = {
     const db = readDb()
     db.parties = db.parties.map((p) => (p.id === partyId ? { ...p, votes: { ...p.votes, [userId]: vote }, updated_at: now() } : p))
     writeDb(db, 'parties')
+  },
+  async toggleReaction(postId, userId, kind) {
+    const db = readDb()
+    db.quest_feed = db.quest_feed.map((p) => {
+      if (p.id !== postId) return p
+      const list = p.reactions?.[kind] ?? []
+      const next = list.includes(userId) ? list.filter((u) => u !== userId) : [...list, userId]
+      return { ...p, reactions: { ...p.reactions, [kind]: next } }
+    })
+    writeDb(db, 'quest_feed')
   },
   async upload(path, file) {
     // Small images are kept as data URLs so other tabs can show the thumbnail; larger files keep just a name.

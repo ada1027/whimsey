@@ -14,7 +14,7 @@ export function QuestMeta({ quest, showPenalty = false }) {
     <div className="space-y-1.5">
       <div className="flex flex-wrap gap-1.5">
         {quest.group && <Pill tone="blue" icon={Users}>Group</Pill>}
-        <Pill tone={diff.tone}>{diff.label}</Pill>
+        {quest.type === 'random' ? <Pill tone="pink">Random roll</Pill> : <Pill tone={diff.tone}>{diff.label}</Pill>}
         <Pill tone="dark" icon={Clock}>{limit} min limit</Pill>
         <Pill tone="grape" icon={Zap}>+{quest.xp} XP</Pill>
         <Pill tone="gold" icon={Coins}>+{coinsFor(quest.xp)}</Pill>

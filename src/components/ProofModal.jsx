@@ -19,7 +19,7 @@ const formatSize = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max
 /** Asks for a (mock) photo/video before a quest is completed. Nothing is uploaded. */
 export default function ProofModal({ quest, onClose }) {
   const { completeQuest } = useUser()
-  const { submitGroupProof } = useOnline()
+  const { completeWithProof } = useOnline()
   const inputRef = useRef(null)
   const [proof, setProof] = useState(null) // { name, type, size, kind, url?, sample?, file? }
   const [mode, setMode] = useState('together') // group quests: 'together' | 'separate'
@@ -44,19 +44,22 @@ export default function ProofModal({ quest, onClose }) {
     if (!proof || submitting) return
     setSubmitting(true)
     const { name, type, size, kind, sample = false, file } = proof
+    const share = () => completeWithProof({ quest, mode: isPartyQuest ? mode : null, file: sample ? null : file, sampleName: sample ? name : null })
     if (isPartyQuest) {
-      // Award locally right away, then upload + sync completion to the party.
+      // Award locally right away, then upload, sync completion to the party and post to the feed.
       completeQuest(quest.id, { name, type, size, kind, sample, mode })
       onClose()
-      submitGroupProof({ partyId: quest.partyId, mode, file: sample ? null : file, sampleName: sample ? name : null })
+      share()
       return
     }
-    // Solo quests: short fake "verifying" delay, then award XP + coins (reward overlay takes over).
+    // Solo: short "verifying" beat, award XP + coins (reward overlay takes over), then share to the feed.
     setTimeout(() => {
       completeQuest(quest.id, { name, type, size, kind, sample })
       onClose()
+      share()
     }, 800)
   }
+
 
   return (
     <Modal onClose={onClose} title={quest.title} eyebrow="Submit proof" dismissable={!submitting}>
@@ -148,7 +151,7 @@ export default function ProofModal({ quest, onClose }) {
       </button>
       <p className="mt-3 flex items-center justify-center gap-1 text-[11px] font-bold text-muted">
         <FileCheck2 size={12} />
-        {isPartyQuest ? 'Photos are uploaded so your party can see them.' : 'Solo proof stays on your device.'}
+        Your proof is shared to your friends' activity feed.
       </p>
     </Modal>
   )

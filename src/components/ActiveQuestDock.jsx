@@ -1,6 +1,7 @@
 import { ChevronUp, Swords } from 'lucide-react'
 import { useEffect } from 'react'
 import { useUser } from '../context/UserContext.jsx'
+import { QUEST_TYPE_LABEL } from '../data/seed.js'
 import { CategoryTile, Countdown } from './QuestBits.jsx'
 
 const EXPANDED_MS = 5000
@@ -52,7 +53,7 @@ export default function ActiveQuestDock({ onOpen }) {
       >
         <div className="scale-[.72] -m-2"><CategoryTile category={quest.category} /></div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-[11px] uppercase leading-none tracking-widest text-muted">{quest.group ? 'Group quest' : 'Active quest'}</p>
+          <p className="font-display text-[11px] uppercase leading-none tracking-widest text-muted">{QUEST_TYPE_LABEL[quest.type] ?? 'Active quest'}</p>
           <p className="truncate font-display text-base leading-tight">{quest.title}</p>
         </div>
         <Countdown expiresAt={quest.expiresAt} />

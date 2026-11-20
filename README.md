@@ -11,9 +11,12 @@ npm run dev
 
 ## Test tasks covered
 1. **Avatar & profile** — Profile tab: edit name/bio/activity tags, Locker to equip color, face, hat, gear and title. Items unlock by level or are bought with coins.
+2. **Random rolls** — Home › PLAY rolls a whimsical micro-quest from its own pool (3 rolls per day; the first reveal is free, Reroll and Accept each use a roll). Same one-active-quest limit and timer.
 2. **Dailies** — Quests tab › Dailies: 3 quests per day (one Easy, Medium, Epic) with XP, coins, time limit and failure penalty. Only **one quest can be active** at a time (solo or group); other Accept buttons lock with "Finish active quest first". Home › PLAY spins one of the remaining dailies.
 3. **Timer, proof & failure** — accepting starts a countdown (15/30/60 min). The active quest stays pinned on Home/Quests and as a compact dock above the nav on every tab (tap it for details). **Complete & submit proof** earns XP/coins and builds your streak; if the timer hits 00:00 (or use **Test: Expire Timer**) you get "Quest Failed — Time Expired!" with an XP/coin penalty and a streak reset.
 4. **Social / parties** — party lobby (leader crown, invite, kick, leave), join friends' open lobbies, and group matchmaking: **Join group queue** → searching → **Match found** → accept a shared quest with a +50% party bonus. Non-leaders **Ready up** and the (mock) leader starts the queue.
+
+**Friend activity feed** (Home, plus the latest 3 on Social): every completed quest posts the proof photo/video, quest type, time taken, party + Together/Separate tag, with 🔥 Hype / 👏 GG / 👀 Sus? reactions that sync live. Sample users seed a few posts on first load and cheer new posts.
 
 The quest in progress is pinned at the top of Home and Quests (glowing **Current quest in progress** card with **Complete & submit proof**). Accepting from the board shows a **Quest accepted!** banner; PLAY and group quests jump straight to it.
 

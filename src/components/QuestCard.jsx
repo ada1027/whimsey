@@ -1,7 +1,7 @@
 import { Camera, Check, Coins, Lock, Play, Skull, Sparkles, Video, X, Zap } from 'lucide-react'
 import { useOnline } from '../context/OnlineContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
-import { CATEGORIES, coinsFor, penaltyLabel } from '../data/seed.js'
+import { CATEGORIES, coinsFor, penaltyLabel, QUEST_TYPE_LABEL } from '../data/seed.js'
 import Character from './Character.jsx'
 import { CategoryTile, Countdown, QuestMeta } from './QuestBits.jsx'
 import { Pill } from './ui.jsx'
@@ -87,7 +87,7 @@ export function HistoryCard({ quest, justFinished = false }) {
         <CategoryTile category={quest.category} />
         <div className="min-w-0 flex-1">
           <p className="font-display text-xs uppercase tracking-widest text-muted">
-            {quest.group ? 'Group quest' : 'Daily'} · {when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
+            {QUEST_TYPE_LABEL[quest.type ?? (quest.group ? 'group' : 'daily')]} · {when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
             {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
           </p>
           <h3 className="font-display text-lg leading-tight">{quest.title}</h3>

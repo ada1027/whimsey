@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { applyXp } from '../data/progression.js'
 import {
-  CATALOG_BY_ID, coinsFor, dayKey, DEFAULT_PROFILE, DIFFICULTY, ITEM_BY_ID, isOwned, PARTY_BONUS, penaltyFor, pickDailies, resolveLook,
+  CATALOG_BY_ID, coinsFor, dayKey, DEFAULT_PROFILE, DIFFICULTY, ITEM_BY_ID, isOwned, PARTY_BONUS, penaltyFor, pickDailies,
+  RANDOM_BY_ID, resolveLook, ROLLS_PER_DAY,
 } from '../data/seed.js'
 
 const UserContext = createContext(null)
@@ -13,6 +14,8 @@ const setQuest = (state, id, patch) => ({
 })
 
 const hasActive = (state) => state.quests.some((q) => q.status === 'active')
+const freshRolls = (date) => ({ date, used: 0, pending: null })
+const rollsLeft = (state) => ROLLS_PER_DAY - (state.rolls?.used ?? 0)
 
 /** Consecutive days with at least one completed quest. */
 function bumpStreak(state) {
@@ -25,8 +28,32 @@ function bumpStreak(state) {
 function reducer(state, action) {
   switch (action.type) {
     case 'ROLL_DAILIES': {
-      if (state.daily?.date === action.date) return state
-      return { ...state, daily: { date: action.date, ids: pickDailies(action.date) } }
+      if (state.daily?.date === action.date && state.rolls?.date === action.date) return state
+      return { ...state, daily: { date: action.date, ids: pickDailies(action.date) }, rolls: freshRolls(action.date) }
+    }
+
+    /* ----- Random rolls: the first reveal is free; Reroll and Accept each spend 1 of 3 daily rolls ----- */
+    case 'REVEAL_ROLL': {
+      if (state.rolls?.pending || rollsLeft(state) < 1 || !RANDOM_BY_ID[action.questId]) return state
+      return { ...state, rolls: { ...state.rolls, pending: action.questId } }
+    }
+    case 'REROLL': {
+      // Keep at least one roll back so the new quest can still be accepted.
+      if (!state.rolls?.pending || rollsLeft(state) < 2 || !RANDOM_BY_ID[action.questId]) return state
+      return { ...state, rolls: { ...state.rolls, used: state.rolls.used + 1, pending: action.questId } }
+    }
+    case 'ACCEPT_ROLL': {
+      const t = RANDOM_BY_ID[state.rolls?.pending]
+      if (!t || rollsLeft(state) < 1 || hasActive(state)) return state
+      const now = Date.now()
+      const id = `roll-${state.rolls.date}-${state.rolls.used + 1}-${t.id}`
+      const q = { ...t, id, type: 'random', status: 'active', acceptedAt: now, expiresAt: now + t.limit * MIN, completedAt: null, proof: null }
+      return {
+        ...state,
+        quests: [q, ...state.quests],
+        rolls: { ...state.rolls, used: state.rolls.used + 1, pending: null },
+        lastAccepted: { id: now, questId: id, title: t.title },
+      }
     }
 
     /** Accept one of today's dailies — only when no other quest is active. */
@@ -41,6 +68,7 @@ function reducer(state, action) {
         ...t,
         id,
         catalogId: t.id,
+        type: 'daily',
         date: daily.date,
         status: 'active',
         acceptedAt: now,
@@ -74,6 +102,7 @@ function reducer(state, action) {
         limit,
         baseXp,
         xp: Math.round(baseXp * (1 + PARTY_BONUS)),
+        type: 'group',
         group: true,
         members,
         status: 'active',
@@ -134,6 +163,10 @@ function reducer(state, action) {
     case 'SET_PARTY_PROOFS':
       return setQuest(state, action.id, { partyProofs: action.proofs })
 
+    /** The completion has been shared to the friend feed. */
+    case 'MARK_POSTED':
+      return setQuest(state, action.id, { posted: true })
+
     case 'EQUIP': {
       const item = ITEM_BY_ID[action.itemId]
       if (!item || !isOwned(item, state)) return state
@@ -159,7 +192,7 @@ function reducer(state, action) {
     case 'DISMISS_FAILURE':
       return { ...state, lastFailure: null }
     case 'RESET':
-      return { ...DEFAULT_PROFILE, daily: { date: dayKey(), ids: pickDailies(dayKey()) } }
+      return { ...DEFAULT_PROFILE, daily: { date: dayKey(), ids: pickDailies(dayKey()) }, rolls: freshRolls(dayKey()) }
     default:
       return state
   }
@@ -183,7 +216,9 @@ function load(storageKey) {
     }
   } catch { /* storage unavailable or corrupt */ }
   const today = dayKey()
-  return state.daily?.date === today ? state : { ...state, daily: { date: today, ids: pickDailies(today) } }
+  if (state.daily?.date !== today) state = { ...state, daily: { date: today, ids: pickDailies(today) } }
+  if (state.rolls?.date !== today) state = { ...state, rolls: freshRolls(today) }
+  return state
 }
 
 /** Local progress (quests, locker, XP). Each adventurer gets their own storageKey. */
@@ -222,6 +257,8 @@ export function UserProvider({ storageKey, children }) {
 
     return {
       profile: state,
+      rollsLeft: rollsLeft(state),
+      pendingRoll: RANDOM_BY_ID[state.rolls?.pending] ?? null,
       look: resolveLook(state.equipped),
       title: ITEM_BY_ID[state.equipped.title]?.name ?? 'Rookie',
       dailies,
@@ -231,6 +268,10 @@ export function UserProvider({ storageKey, children }) {
       /** Completed + failed, newest first (the Done tab). */
       history,
       acceptDaily: (catalogId) => dispatch({ type: 'ACCEPT_DAILY', catalogId }),
+      revealRoll: (questId) => dispatch({ type: 'REVEAL_ROLL', questId }),
+      reroll: (questId) => dispatch({ type: 'REROLL', questId }),
+      acceptRoll: () => dispatch({ type: 'ACCEPT_ROLL' }),
+      markPosted: (id) => dispatch({ type: 'MARK_POSTED', id }),
       /** payload: { id, quest, members, partyId, acceptedAt } */
       addGroupQuest: (payload) => dispatch({ type: 'ADD_GROUP_QUEST', payload }),
       /** proof: { name, type, size, kind, sample, url? } — metadata only; solo files stay on the device. */

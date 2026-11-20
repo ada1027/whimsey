@@ -68,6 +68,24 @@ create table if not exists public.party_members (
 );
 create index if not exists party_members_party_idx on public.party_members (party_id);
 
+-- Friend activity feed: one post per completed quest (Strava / BeReal-style proof)
+create table if not exists public.quest_feed (
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references public.profiles (id) on delete cascade,
+  quest_ref        text not null,                -- the app's quest id; makes posting idempotent
+  quest_title      text not null,
+  quest_type       text not null check (quest_type in ('daily', 'random', 'group')),
+  category         text,                         -- body | mind | craft | life | social
+  proof_url        text,                         -- storage URL, or "sample:<emoji>" for sample cards
+  completion_tag   text check (completion_tag in ('together', 'separate')),
+  duration_seconds int,
+  party            jsonb,                        -- group quests: [{ id, name, look }]
+  reactions        jsonb not null default '{}'::jsonb, -- { "hype": [user ids], "gg": [...], "sus": [...] }
+  created_at       timestamptz not null default now(),
+  unique (user_id, quest_ref)
+);
+create index if not exists quest_feed_user_created_idx on public.quest_feed (user_id, created_at desc);
+
 -- ---------------------------------------------------------------------
 -- Keep updated_at fresh (also used as a "last seen" heartbeat)
 -- ---------------------------------------------------------------------
@@ -107,6 +125,37 @@ $$;
 grant execute on function public.cast_vote(uuid, uuid, text) to anon, authenticated;
 
 -- ---------------------------------------------------------------------
+-- Atomic reaction toggle: adds/removes one player's 🔥 hype / 👏 gg / 👀 sus
+-- on a feed post without overwriting other players' reactions.
+-- ---------------------------------------------------------------------
+
+create or replace function public.toggle_reaction(p_post_id uuid, p_user_id uuid, p_kind text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cur jsonb;
+  uid text := p_user_id::text;
+begin
+  if p_kind not in ('hype', 'gg', 'sus') then return; end if;
+  select coalesce(reactions -> p_kind, '[]'::jsonb) into cur
+    from public.quest_feed where id = p_post_id for update;
+  if not found then return; end if;
+  if cur ? uid then
+    select coalesce(jsonb_agg(e), '[]'::jsonb) into cur from jsonb_array_elements_text(cur) as e where e <> uid;
+  else
+    cur := cur || to_jsonb(uid);
+  end if;
+  update public.quest_feed
+     set reactions = jsonb_set(coalesce(reactions, '{}'::jsonb), array[p_kind], cur, true)
+   where id = p_post_id;
+end $$;
+
+grant execute on function public.toggle_reaction(uuid, uuid, text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
 -- Row Level Security: enabled, with open prototype policies
 -- ---------------------------------------------------------------------
 
@@ -114,11 +163,12 @@ alter table public.profiles      enable row level security;
 alter table public.friendships   enable row level security;
 alter table public.parties       enable row level security;
 alter table public.party_members enable row level security;
+alter table public.quest_feed    enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles', 'friendships', 'parties', 'party_members'] loop
+  foreach t in array array['profiles', 'friendships', 'parties', 'party_members', 'quest_feed'] loop
     execute format('drop policy if exists "prototype open access" on public.%I', t);
     execute format(
       'create policy "prototype open access" on public.%I for all to anon, authenticated using (true) with check (true)', t);
@@ -126,7 +176,7 @@ begin
 end $$;
 
 grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on public.profiles, public.friendships, public.parties, public.party_members
+grant select, insert, update, delete on public.profiles, public.friendships, public.parties, public.party_members, public.quest_feed
   to anon, authenticated;
 
 -- ---------------------------------------------------------------------
@@ -137,6 +187,7 @@ alter table public.profiles      replica identity full;
 alter table public.friendships   replica identity full;
 alter table public.parties       replica identity full;
 alter table public.party_members replica identity full;
+alter table public.quest_feed    replica identity full;
 
 do $$
 declare t text;
@@ -144,7 +195,7 @@ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
   end if;
-  foreach t in array array['profiles', 'friendships', 'parties', 'party_members'] loop
+  foreach t in array array['profiles', 'friendships', 'parties', 'party_members', 'quest_feed'] loop
     if not exists (
       select 1 from pg_publication_tables
        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

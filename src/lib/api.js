@@ -1,5 +1,5 @@
 // Game-level operations on top of db.js (works the same in Supabase and local mode).
-import { BOT_NAMES, GROUP_QUESTS, MAX_PARTY_SIZE, MAX_REROLLS, SAMPLE_USERS } from '../data/seed.js'
+import { BOT_NAMES, GROUP_QUESTS, MAX_PARTY_SIZE, MAX_REROLLS, SAMPLE_FEED, SAMPLE_USERS } from '../data/seed.js'
 import { db } from './db.js'
 
 const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
@@ -92,10 +92,16 @@ export async function loadSocial(me) {
   lobbies = lobbies.filter((p) => p.id !== party?.id)
   const lobbyMembers = lobbies.length ? await db.select('party_members', { in: { party_id: lobbies.map((p) => p.id) } }) : []
 
-  const ids = uniq([me, ...friendships.map(other), ...members.map((m) => m.user_id), ...lobbyMembers.map((m) => m.user_id)])
-  const profiles = await db.select('profiles', { in: { id: ids } })
+  // Feed: you, accepted friends, your party, and the sample users (so it's never empty while testing)
+  const bots = await db.select('profiles', { eq: { is_bot: true }, limit: 60 })
+  const authors = uniq([me, ...acceptedIds, ...members.map((m) => m.user_id), ...bots.map((b) => b.id)])
+  const feed = await loadFeed(authors, 30)
 
-  return { friendships, party, members, lobbies, lobbyMembers, profiles }
+  const ids = uniq([me, ...friendships.map(other), ...members.map((m) => m.user_id), ...lobbyMembers.map((m) => m.user_id)])
+  const botIds = new Set(bots.map((b) => b.id))
+  const profiles = [...bots, ...(await db.select('profiles', { in: { id: ids.filter((id) => !botIds.has(id)) } }))]
+
+  return { friendships, party, members, lobbies, lobbyMembers, profiles, feed }
 }
 
 /* ---------- parties ---------- */
@@ -195,9 +201,10 @@ export async function resolveVote(party, memberIds) {
 
 /* ---------- completion + proof ---------- */
 
-export async function uploadProof(partyId, me, file) {
+/** Uploads a proof file to the quest-proofs bucket under `folder/` and returns its URL. */
+export async function uploadProof(folder, me, file) {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')
-  return db.upload(`${partyId}/${me}-${Date.now()}.${ext}`, file)
+  return db.upload(`${folder}/${me}-${Date.now()}.${ext}`, file)
 }
 
 /** mode 'together' completes the quest for the whole party with one proof; 'separate' only for you. */
@@ -214,4 +221,56 @@ export async function resetToLobby(partyId, leaderId) {
   await db.update('party_members', { is_ready: false, has_completed: false, completion_mode: null, proof_url: null }, { eq: { party_id: partyId } })
   await db.update('party_members', { is_ready: true }, { eq: { party_id: partyId, user_id: leaderId } })
   return db.update('parties', { status: 'lobby', current_quest: null, votes: {}, rerolls_used: 0 }, { eq: { id: partyId } })
+}
+
+/* ---------- friend activity feed ---------- */
+
+/**
+ * Shares a completed quest. `ref` (the local quest id) makes posting idempotent per user.
+ * post: { ref, title, type: 'daily'|'random'|'group', category, proofUrl, tag, durationSeconds, party }
+ */
+export function postToFeed(userId, post) {
+  return db.insertIgnore('quest_feed', {
+    user_id: userId,
+    quest_ref: post.ref,
+    quest_title: post.title,
+    quest_type: post.type,
+    category: post.category ?? null,
+    proof_url: post.proofUrl ?? null,
+    completion_tag: post.tag ?? null,
+    duration_seconds: post.durationSeconds ?? null,
+    party: post.party ?? null,
+    reactions: {},
+  }, 'user_id,quest_ref')
+}
+
+/** Latest posts from the given authors, newest first. */
+export const loadFeed = (authorIds, limit = 30) =>
+  authorIds.length
+    ? db.select('quest_feed', { in: { user_id: authorIds }, order: ['created_at', { ascending: false }], limit })
+    : Promise.resolve([])
+
+export const toggleReaction = (postId, userId, kind) => db.toggleReaction(postId, userId, kind)
+
+/** Makes sure the sample users exist and have a few posts, so the feed isn't empty on first load. */
+export async function seedSampleFeed() {
+  await seedSampleUsers()
+  const users = await db.select('profiles', { in: { username: SAMPLE_USERS.map((u) => u.username) } })
+  const idOf = Object.fromEntries(users.map((u) => [u.username, u.id]))
+  const existing = await db.select('quest_feed', { in: { user_id: users.map((u) => u.id) }, limit: 1 })
+  if (existing.length) return 0
+  const rows = SAMPLE_FEED.filter((p) => idOf[p.user]).map((p) => ({
+    user_id: idOf[p.user],
+    quest_ref: p.ref,
+    quest_title: p.title,
+    quest_type: p.type,
+    category: p.category,
+    proof_url: p.proof,
+    completion_tag: p.tag ?? null,
+    duration_seconds: p.duration,
+    party: p.party ? p.party.map((n) => ({ id: idOf[n], name: n })) : null,
+    reactions: Object.fromEntries(Object.entries(p.reactions).map(([k, names]) => [k, names.map((n) => idOf[n]).filter(Boolean)])),
+    created_at: new Date(Date.now() - p.ago * 60_000).toISOString(),
+  }))
+  return (await db.insertIgnore('quest_feed', rows, 'user_id,quest_ref')).length
 }

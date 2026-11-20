@@ -68,6 +68,59 @@ export function pickDailies(date) {
   })
 }
 
+/* ---------- Random rolls (Home › PLAY) ---------- */
+
+export const ROLLS_PER_DAY = 3
+const ROLL_XP = 20
+const ROLL_PENALTY = { xp: 5, coins: 0, streakReset: true }
+
+const roll = (id, title, description, category, limit) => ({
+  id, title, description, category, limit, difficulty: 'easy', xp: ROLL_XP, penalty: ROLL_PENALTY, type: 'random',
+})
+
+/** Spontaneous, whimsical micro-quests — a separate pool from the dailies. */
+export const RANDOM_QUESTS = [
+  roll('r1', 'Yellow Hunt', 'Find something yellow outside and snap it.', 'life', 15),
+  roll('r2', 'Squat Surprise', 'Do 15 squats right now.', 'body', 5),
+  roll('r3', 'Mood Doodle', 'Draw a 30-second doodle of your mood.', 'craft', 5),
+  roll('r4', 'Kindness Bomb', 'Compliment a friend or a stranger.', 'social', 10),
+  roll('r5', 'Sky Check', 'Take a photo of the sky right now.', 'life', 5),
+  roll('r6', 'Flamingo Mode', 'Balance on one foot for 60 seconds.', 'body', 5),
+  roll('r7', 'Hotel Bed', 'Make your bed like a fancy hotel.', 'life', 10),
+  roll('r8', 'Lunch Haiku', 'Write a 3-line poem about your last meal.', 'craft', 10),
+  roll('r9', 'Meme Delivery', 'Send a meme to someone who needs a laugh.', 'social', 5),
+  roll('r10', 'Tiny Tower', 'Build a tower out of things on your desk.', 'craft', 10),
+  roll('r11', 'Cloud Safari', 'Find a cloud shaped like an animal.', 'mind', 15),
+  roll('r12', 'Dance Break', 'Do a 1-minute dance break — no one is watching.', 'body', 5),
+  roll('r13', 'Gratitude Blast', 'Say 5 things you are grateful for out loud.', 'mind', 5),
+  roll('r14', 'Rainbow Shelf', 'Rearrange one shelf or drawer by color.', 'life', 15),
+  roll('r15', 'Pinky Up', 'Drink a glass of water from your fanciest cup, pinky up.', 'body', 5),
+  roll('r16', 'Plant Pal', 'Say hi to a plant and snap a portrait of it.', 'life', 10),
+]
+export const RANDOM_BY_ID = Object.fromEntries(RANDOM_QUESTS.map((q) => [q.id, q]))
+
+/* ---------- Friend activity feed ---------- */
+
+export const QUEST_TYPE_LABEL = { daily: 'Daily', random: 'Random roll', group: 'Group quest' }
+
+export const REACTIONS = [
+  { id: 'hype', emoji: '🔥', label: 'Hype' },
+  { id: 'gg', emoji: '👏', label: 'GG' },
+  { id: 'sus', emoji: '👀', label: 'Sus?' },
+]
+
+/** Posts seeded from the sample users so the feed looks alive on first load. `ago` is minutes. */
+export const SAMPLE_FEED = [
+  { ref: 'sample-1', user: 'Pixel', title: 'Dragon Walk', type: 'daily', category: 'body', proof: 'sample:🌳', duration: 18 * 60 + 31, ago: 4,
+    reactions: { hype: ['Moonbeam', 'Bolt'], gg: ['Nova'] } },
+  { ref: 'sample-2', user: 'Moonbeam', title: 'Mood Doodle', type: 'random', category: 'craft', proof: 'sample:🎨', duration: 2 * 60 + 5, ago: 27,
+    reactions: { gg: ['Pixel', 'Taco', 'Sprout'] } },
+  { ref: 'sample-3', user: 'Bolt', title: 'Group Stretch Break', type: 'group', category: 'body', proof: 'sample:🧘', duration: 6 * 60 + 12, ago: 64,
+    tag: 'together', party: ['Bolt', 'Pixel', 'Sprout'], reactions: { hype: ['Juniper'], gg: ['Moonbeam', 'Nova'] } },
+  { ref: 'sample-4', user: 'Nova', title: 'Yellow Hunt', type: 'random', category: 'life', proof: 'sample:🌻', duration: 9 * 60 + 48, ago: 190,
+    reactions: { hype: ['Pixel'], sus: ['Inky'] } },
+]
+
 /* ---------- Avatar locker ---------- */
 
 export const SLOTS = [
@@ -179,5 +232,6 @@ export const DEFAULT_PROFILE = {
   purchased: [],
   quests: [], // attempts: active, completed and failed quests (fresh accounts start empty)
   daily: null, // { date, ids } — rolled on load and at midnight
+  rolls: null, // { date, used, pending } — 3 random rolls per day; `pending` is the revealed-but-not-accepted roll
   version: 3,
 }

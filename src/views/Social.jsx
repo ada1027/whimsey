@@ -3,6 +3,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import Character from '../components/Character.jsx'
+import FriendFeed from '../components/FriendFeed.jsx'
 import { Modal, PageTitle, Pill, SectionTitle } from '../components/ui.jsx'
 import { presence, useOnline } from '../context/OnlineContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
@@ -44,6 +45,7 @@ export default function Social({ onNavigate, params = {} }) {
 
       {loaded && (
         <>
+          <FriendFeed limit={3} title="Latest from friends" />
           <PartyCard onNavigate={onNavigate} onInvite={() => setInviting(true)} />
           <FriendRequests />
           <JoinableParties />

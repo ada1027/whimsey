@@ -42,6 +42,7 @@ export function OnlineProvider({ children }) {
   const [searching, setSearching] = useState(false)
   const [autoQueue, setAutoQueue] = useState(false)
   const [hiddenVoteRound, setHiddenVoteRound] = useState(null)
+  const [optimistic, setOptimistic] = useState({}) // `${postId}:${kind}` → reacted?
 
   /* ---------------- loading + realtime ---------------- */
 
@@ -126,6 +127,34 @@ export function OnlineProvider({ children }) {
     await api.leaveParty(p, p.members, d.profilesById, me)
   }, [me])
 
+  /* ---------------- feed publishing ---------------- */
+
+  const markPosted = user.markPosted
+  const partySnapshot = useCallback(() =>
+    latest.current.party?.members.map((m) => ({ id: m.user_id, name: m.profile.username, look: m.look })) ?? null, [])
+
+  /** Share a completed quest to the friend feed (idempotent per author + quest). */
+  const publish = useCallback(async (authorId, quest, { proofUrl = null, tag = null, party: snap = null } = {}) => {
+    const type = quest.type ?? (quest.group ? 'group' : 'daily')
+    const rows = await api.postToFeed(authorId, {
+      ref: quest.id,
+      title: quest.title,
+      type,
+      category: quest.category,
+      proofUrl,
+      tag: type === 'group' ? tag : null,
+      durationSeconds: quest.acceptedAt ? Math.max(1, Math.round((Date.now() - quest.acceptedAt) / 1000)) : null,
+      party: type === 'group' ? snap : null,
+    })
+    return rows?.[0] ?? null
+  }, [])
+
+  /** Sample users react to your new post a few seconds later, so the feed feels social while testing. */
+  const cheerFromBots = useCallback((postId) => {
+    const bots = Object.values(latest.current.derived?.profilesById ?? {}).filter((p) => p.is_bot).sort(() => Math.random() - 0.5).slice(0, 2)
+    bots.forEach((b, i) => setTimeout(() => api.toggleReaction(postId, b.id, i ? 'gg' : 'hype').catch(() => {}), 3000 + i * 2500 + Math.random() * 1500))
+  }, [])
+
   const actions = useMemo(() => ({
     refresh,
     searchUsers: (q) => api.searchProfiles(q, me),
@@ -171,19 +200,43 @@ export function OnlineProvider({ children }) {
     },
     vote: (v) => run(() => api.castVote(latest.current.party.id, me, v)),
 
-    /** Upload proof (if a real file) and mark completion for you, or for everyone when mode is 'together'. */
-    submitGroupProof: ({ partyId, mode, file, sampleName }) => run(async () => {
+    /**
+     * After a quest is completed locally: upload the proof (if a real file), sync group completion
+     * (for everyone when mode is 'together'), and post it to the friend feed.
+     */
+    completeWithProof: ({ quest, mode = null, file = null, sampleName = null }) => run(async () => {
       let url = sampleName ? `sample:${sampleName}` : null
       if (file) {
-        try { url = await api.uploadProof(partyId, me, file) } catch (e) {
+        try { url = await api.uploadProof(quest.partyId ?? 'solo', me, file) } catch (e) {
           toast(`Upload failed (${e.message}) — completed without the photo`, { tone: 'pink', icon: X })
-          url = `local:${file.name}`
         }
       }
-      await api.submitGroupCompletion(partyId, me, mode, url)
+      if (quest.partyId) await api.submitGroupCompletion(quest.partyId, me, mode, url ?? `local:${file?.name ?? 'proof'}`)
+      const post = await publish(me, quest, { proofUrl: url, tag: mode, party: partySnapshot() })
+      markPosted(quest.id)
+      if (post) cheerFromBots(post.id)
       return url
     }),
-  }), [refresh, run, me, ensureParty, leaveCurrent, toast])
+
+    /** Tap-to-toggle 🔥 / 👏 / 👀 on a feed post (optimistic, then synced). */
+    toggleReaction: async (post, kind) => {
+      const key = `${post.id}:${kind}`
+      setOptimistic((o) => ({ ...o, [key]: !post.mine[kind] }))
+      try { await api.toggleReaction(post.id, me, kind) } catch (e) { toast(e.message, { tone: 'pink', icon: X }) }
+      await refresh()
+      setOptimistic((o) => { const { [key]: _, ...rest } = o; return rest })
+    },
+  }), [refresh, run, me, ensureParty, leaveCurrent, toast, publish, partySnapshot, markPosted, cheerFromBots])
+
+  /* ---------------- seed the sample feed once, so it's alive on first load ---------------- */
+
+  const seededFeed = useRef(false)
+  useEffect(() => {
+    if (!raw || seededFeed.current) return
+    seededFeed.current = true
+    const botIds = new Set(raw.profiles.filter((p) => p.is_bot).map((p) => p.id))
+    if (!raw.feed.some((p) => botIds.has(p.user_id))) api.seedSampleFeed().then(refresh).catch(() => {})
+  }, [raw, refresh])
 
   /* ---------------- solo auto-queue once bots are ready ---------------- */
 
@@ -231,8 +284,10 @@ export function OnlineProvider({ children }) {
       const url = mine.proof_url ?? ''
       completeQuest(id, { name: url.startsWith('sample:') ? url.slice(7) : 'Team proof', kind: 'photo', url, shared: true })
       toast('A teammate submitted proof for the whole party!', { tone: 'blue', icon: Users })
+      publish(me, local, { proofUrl: mine.proof_url, tag: 'together', party: partySnapshot() })
+        .then(() => markPosted(id)).catch(() => {})
     }
-  }, [party, me, addGroupQuest, completeQuest, setPartyProofs, toast])
+  }, [party, me, addGroupQuest, completeQuest, setPartyProofs, toast, publish, partySnapshot, markPosted])
 
   /* ---------------- group quest failed on this device → free the party ---------------- */
 
@@ -307,11 +362,15 @@ export function OnlineProvider({ children }) {
           const m = p?.members.find((x) => x.user_id === bot.user_id)
           if (p?.status === 'active_quest' && m && !m.has_completed) {
             await api.submitGroupCompletion(party.id, bot.user_id, 'separate', 'sample:bot-proof.jpg')
+            // Teammates post their completions too.
+            const q = p.current_quest
+            await publish(bot.user_id, { id: partyQuestId(p), title: q.title, type: 'group', category: q.category, acceptedAt: Date.parse(q.acceptedAt) },
+              { proofUrl: 'sample:bot-proof.jpg', tag: 'separate', party: partySnapshot() })
           }
         })
       }
     })
-  }, [party, me, schedule])
+  }, [party, me, schedule, publish, partySnapshot])
 
   /* ---------------- profile sync: local stats → profiles row ---------------- */
 
@@ -360,6 +419,18 @@ export function OnlineProvider({ children }) {
       ...friends.map((f) => ({ id: f.profile.id, username: f.profile.username, level: f.profile.level, xp: f.profile.xp, look: api.parseAvatar(f.profile.avatar).look, bot: f.profile.is_bot })),
       meRow,
     ].sort((a, b) => b.level - a.level || b.xp - a.xp)
+    const feed = (raw?.feed ?? []).map((post) => {
+      const author = d?.profilesById[post.user_id]
+      const counts = {}
+      const mine = {}
+      for (const r of ['hype', 'gg', 'sus']) {
+        const list = post.reactions?.[r] ?? []
+        const opt = optimistic[`${post.id}:${r}`]
+        mine[r] = opt ?? list.includes(me)
+        counts[r] = list.length + (opt === undefined ? 0 : opt === list.includes(me) ? 0 : opt ? 1 : -1)
+      }
+      return { ...post, author, counts, mine, isMine: post.user_id === me }
+    }).filter((p) => p.author)
     const relation = (id) =>
       friends.some((f) => f.profile.id === id) ? 'friend'
         : d?.incoming.some((f) => f.profile.id === id) ? 'incoming'
@@ -382,6 +453,8 @@ export function OnlineProvider({ children }) {
       hasBots: !!party?.members.some((m) => m.profile.is_bot),
       lobbies: d?.lobbies ?? [],
       leaderboard,
+      feed,
+      profilesById: d?.profilesById ?? {},
       rank: leaderboard.findIndex((p) => p.me) + 1,
       searching,
       hiddenVoteRound,
@@ -389,7 +462,7 @@ export function OnlineProvider({ children }) {
       showVote: () => setHiddenVoteRound(null),
       ...actions,
     }
-  }, [derived, error, party, searching, hiddenVoteRound, actions, mode, me, user.profile.username, user.profile.level, user.profile.xp, user.look])
+  }, [derived, raw, optimistic, error, party, searching, hiddenVoteRound, actions, mode, me, user.profile.username, user.profile.level, user.profile.xp, user.look])
 
   return <OnlineContext.Provider value={value}>{children}</OnlineContext.Provider>
 }
