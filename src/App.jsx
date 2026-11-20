@@ -1,17 +1,19 @@
 import { BatteryFull, Signal, Wifi } from 'lucide-react'
 import { useRef, useState } from 'react'
-import AcceptedBanner from './components/AcceptedBanner.jsx'
+import ActiveQuestDock from './components/ActiveQuestDock.jsx'
+import { ActiveQuestSheet } from './components/CurrentQuestCard.jsx'
 import GamemodeModal from './components/GamemodeModal.jsx'
 import LoginScreen from './components/LoginScreen.jsx'
 import NavBar from './components/NavBar.jsx'
 import PartyVoteModal from './components/PartyVoteModal.jsx'
 import PlayModal from './components/PlayModal.jsx'
+import QuestFailedModal from './components/QuestFailedModal.jsx'
 import RewardOverlay from './components/RewardOverlay.jsx'
 import StatusBar from './components/StatusBar.jsx'
 import { OnlineProvider } from './context/OnlineContext.jsx'
 import { GUEST_STORE_KEY, userStoreKey, useSession } from './context/SessionContext.jsx'
 import { ToastViewport } from './context/ToastContext.jsx'
-import { UserProvider } from './context/UserContext.jsx'
+import { UserProvider, useUser } from './context/UserContext.jsx'
 import Dashboard from './views/Dashboard.jsx'
 import Profile from './views/Profile.jsx'
 import Quests from './views/Quests.jsx'
@@ -42,31 +44,39 @@ export default function App() {
 function Game() {
   const [route, setRoute] = useState({ view: 'dashboard', params: {}, key: 0 })
   const [modal, setModal] = useState(null) // 'play' | 'gamemode' | null
+  const [sheetFor, setSheetFor] = useState(null) // active-quest detail view, keyed by quest id
+  const { activeQuest } = useUser()
   const screenRef = useRef(null)
 
   const navigate = (view, params = {}) => {
     setRoute((r) => ({ view, params, key: r.key + 1 }))
     screenRef.current?.scrollTo({ top: 0 })
   }
-  const shared = { onNavigate: navigate, onOpenPlay: () => setModal('play'), onOpenGamemode: () => setModal('gamemode') }
+  const openActive = () => activeQuest && setSheetFor(activeQuest.id)
+  const shared = { onNavigate: navigate, onOpenPlay: () => setModal('play'), onOpenGamemode: () => setModal('gamemode'), onOpenActive: openActive }
 
   return (
     <>
-    <StatusBar {...shared} />
-    <main ref={screenRef} className="screen-bg flex-1 overflow-y-auto overscroll-contain px-4 pb-8 pt-5 [scrollbar-width:none]">
-      {route.view === 'dashboard' && <Dashboard {...shared} />}
-      {route.view === 'quests' && <Quests key={route.key} initialTab={route.params.tab} />}
-      {route.view === 'social' && <Social onNavigate={navigate} />}
-      {route.view === 'profile' && <Profile />}
-    </main>
-    <NavBar view={route.view} onChange={navigate} />
+      <StatusBar {...shared} />
+      <div className="relative min-h-0 flex-1">
+        <main ref={screenRef} className="screen-bg absolute inset-0 overflow-y-auto overscroll-contain px-4 pb-8 pt-5 [scrollbar-width:none]">
+          {route.view === 'dashboard' && <Dashboard {...shared} />}
+          {route.view === 'quests' && <Quests key={route.key} params={route.params} onOpenActive={openActive} onNavigate={navigate} />}
+          {route.view === 'social' && <Social key={route.key} params={route.params} onNavigate={navigate} />}
+          {route.view === 'profile' && <Profile />}
+        </main>
+        <ToastViewport />
+      </div>
+      {/* Persistent on every tab while a quest is active */}
+      <ActiveQuestDock onOpen={openActive} />
+      <NavBar view={route.view} onChange={navigate} />
 
-    <ToastViewport />
-    <AcceptedBanner onNavigate={navigate} />
-    {modal === 'play' && <PlayModal onClose={() => setModal(null)} onNavigate={navigate} />}
-    {modal === 'gamemode' && <GamemodeModal onClose={() => setModal(null)} />}
-    <RewardOverlay onNavigate={navigate} />
-    <PartyVoteModal />
+      {sheetFor && activeQuest?.id === sheetFor && <ActiveQuestSheet onClose={() => setSheetFor(null)} />}
+      {modal === 'play' && <PlayModal onClose={() => setModal(null)} onNavigate={navigate} onOpenActive={openActive} />}
+      {modal === 'gamemode' && <GamemodeModal onClose={() => setModal(null)} />}
+      <RewardOverlay onNavigate={navigate} />
+      <QuestFailedModal onNavigate={navigate} />
+      <PartyVoteModal />
     </>
   )
 }

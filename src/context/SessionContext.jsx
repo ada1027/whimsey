@@ -63,7 +63,7 @@ export function SessionProvider({ children }) {
     // Seed this adventurer's local save the first time they play on this device.
     const key = userStoreKey(profile.id)
     if (!localStorage.getItem(key)) {
-      const { lastReward: _r, lastAccepted: _a, ...base } = localState
+      const { lastReward: _r, lastAccepted: _a, lastFailure: _f, ...base } = localState
       const saved = existing ? api.parseAvatar(existing.avatar).equipped : null
       const equipped = saved && Object.values(saved).every((id) => ITEM_BY_ID[id]) ? saved : base.equipped ?? DEFAULT_EQUIPPED
       const maxXp = maxXpForLevel(profile.level)

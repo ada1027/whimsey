@@ -29,8 +29,13 @@ export default function RewardOverlay({ onNavigate }) {
 }
 
 function Celebration({ reward, onNavigate }) {
-  const { dismissReward, look } = useUser()
+  const { dismissReward: dismiss, look } = useUser()
   const { from, to, levelsGained } = reward
+  // Group quests: collecting takes you to Quests → Done with the quest highlighted.
+  const dismissReward = () => {
+    dismiss()
+    if (reward.group) onNavigate('quests', { tab: 'done', highlight: reward.questId })
+  }
   // phase 0: show old bar · 1: fill · 2: level up (bar restarts at new level)
   const [phase, setPhase] = useState(0)
 
@@ -44,7 +49,7 @@ function Celebration({ reward, onNavigate }) {
     const onKey = (e) => e.key === 'Escape' && dismissReward()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [dismissReward])
+  })
 
   const pct = (xp, max) => Math.min(100, (xp / max) * 100)
   const leveled = phase === 2
@@ -136,12 +141,12 @@ function Celebration({ reward, onNavigate }) {
 
         <div className="mt-5 flex gap-3">
           {leveled && unlocked.length > 0 && (
-            <button onClick={() => { dismissReward(); onNavigate('profile') }} className="btn btn-pink h-14 flex-1 text-lg">
+            <button onClick={() => { dismiss(); onNavigate('profile') }} className="btn btn-pink h-14 flex-1 text-lg">
               Locker
             </button>
           )}
-          <button onClick={dismissReward} autoFocus className="btn btn-gold h-14 flex-1 text-2xl">
-            Collect!
+          <button onClick={dismissReward} autoFocus className={`btn btn-gold h-14 flex-1 ${reward.group ? 'text-xl' : 'text-2xl'}`}>
+            {reward.group ? 'Collect rewards' : 'Collect!'}
           </button>
         </div>
       </div>

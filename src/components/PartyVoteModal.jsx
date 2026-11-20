@@ -1,8 +1,8 @@
 import { Check, ChevronDown, Coins, RefreshCw, Users, Zap } from 'lucide-react'
 import { useOnline } from '../context/OnlineContext.jsx'
-import { coinsFor, DIFFICULTY, MAX_REROLLS, PARTY_BONUS } from '../data/seed.js'
+import { coinsFor, DIFFICULTY, MAX_REROLLS, PARTY_BONUS, penaltyFor } from '../data/seed.js'
 import Character from './Character.jsx'
-import { CategoryTile } from './QuestBits.jsx'
+import { CategoryTile, PenaltyLine } from './QuestBits.jsx'
 import { Pill } from './ui.jsx'
 
 /** Pops on every party member's screen while the party votes Accept / Reroll on a group quest. */
@@ -43,11 +43,13 @@ export default function PartyVoteModal() {
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               <Pill tone={DIFFICULTY[quest.difficulty].tone}>{DIFFICULTY[quest.difficulty].label}</Pill>
-              <Pill tone="dark">{quest.minutes} min</Pill>
+              <Pill tone="dark">{quest.limit ?? DIFFICULTY[quest.difficulty].limit} min limit</Pill>
               <Pill tone="grape" icon={Zap}><span className="line-through opacity-70">{base}</span> {total} XP</Pill>
               <Pill tone="gold" icon={Coins}>+{coinsFor(total)}</Pill>
               <Pill tone="dark" icon={RefreshCw}>{rerollsLeft} rerolls left</Pill>
             </div>
+
+            <div className="mt-2"><PenaltyLine penalty={penaltyFor(quest.difficulty)} /></div>
 
             <p className="mb-1.5 mt-4 font-display text-sm uppercase tracking-widest text-muted">Votes</p>
             <div className="grid grid-cols-4 gap-2">

@@ -1,26 +1,24 @@
-import { Check, Dices, Shuffle } from 'lucide-react'
+import { Check, Dices, Lock, Shuffle } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useToast } from '../context/ToastContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { CategoryTile, QuestMeta } from './QuestBits.jsx'
 import { Modal } from './ui.jsx'
 
-/** PLAY: random quest assignment with a quick slot-machine spin. */
-export default function PlayModal({ onClose, onNavigate }) {
-  const { availableQuests, profile, acceptQuest } = useUser()
-  const toast = useToast()
+/** PLAY: spins one of today's remaining dailies. Respects the one-active-quest limit. */
+export default function PlayModal({ onClose, onNavigate, onOpenActive }) {
+  const { dailies, profile, acceptDaily, activeQuest } = useUser()
   const [pick, setPick] = useState(null)
   const [spinning, setSpinning] = useState(true)
   const [spinKey, setSpinKey] = useState(0)
 
-  // "Simple" players are matched with easy/medium quests only.
-  const pool = profile.tags.includes('simple')
-    ? availableQuests.filter((q) => q.difficulty !== 'hard')
-    : availableQuests
-  const candidates = pool.length ? pool : availableQuests
+  const open = dailies.filter((d) => !d.attempt)
+  // "Simple" players skip the Epic daily when possible.
+  const pool = profile.tags.includes('simple') ? open.filter((q) => q.difficulty !== 'hard') : open
+  const candidates = pool.length ? pool : open
+  const blocked = !!activeQuest
 
   useEffect(() => {
-    if (!candidates.length) return
+    if (blocked || !candidates.length) return
     let n = 0
     const iv = setInterval(() => {
       setPick(candidates[Math.floor(Math.random() * candidates.length)])
@@ -32,22 +30,30 @@ export default function PlayModal({ onClose, onNavigate }) {
   }, [spinKey])
 
   const reroll = () => { setSpinning(true); setSpinKey((k) => k + 1) }
-  // Take the player straight to their new current quest.
   const accept = () => {
-    acceptQuest(pick.id, { notify: false })
-    toast(`"${pick.title}" accepted — it's your current quest!`, { tone: 'neon', icon: Check })
+    acceptDaily(pick.id) // the dock expands with "Quest accepted!" and starts the timer
     onClose()
-    onNavigate('quests', { tab: 'queue' })
+    onNavigate('quests', { tab: 'dailies' })
+  }
+
+  if (blocked) {
+    return (
+      <Modal onClose={onClose} title="Finish active quest first" eyebrow="Play">
+        <div className="flex items-center gap-3 rounded-2xl border-[3px] border-outline bg-surface-2 p-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl border-[3px] border-outline bg-pink text-white"><Lock size={20} strokeWidth={3} /></span>
+          <p className="text-sm font-bold">You&apos;re on <b>{activeQuest.title}</b>. Complete it (or let it expire) before starting another.</p>
+        </div>
+        <button onClick={() => { onClose(); onOpenActive() }} className="btn btn-neon mt-4 h-12 w-full text-lg">Open active quest</button>
+      </Modal>
+    )
   }
 
   return (
-    <Modal onClose={onClose} title="Random quest" eyebrow="Play">
+    <Modal onClose={onClose} title="Random daily" eyebrow="Play">
       {!candidates.length ? (
         <div className="text-center">
-          <p className="font-bold text-muted">The quest board is empty — you've accepted everything!</p>
-          <button onClick={() => { onClose(); onNavigate('quests', { tab: 'queue' }) }} className="btn btn-blue mt-4 h-12 w-full text-lg">
-            Go to my queue
-          </button>
+          <p className="font-bold text-muted">You&apos;ve attempted all 3 dailies today. New ones arrive at midnight!</p>
+          <button onClick={() => { onClose(); onNavigate('social') }} className="btn btn-blue mt-4 h-12 w-full text-lg">Try a group quest</button>
         </div>
       ) : (
         <>
@@ -56,7 +62,7 @@ export default function PlayModal({ onClose, onNavigate }) {
             <p className={`title-stroke text-2xl uppercase leading-tight transition ${spinning ? 'blur-[1.5px]' : ''}`}>{pick?.title ?? '…'}</p>
             {!spinning && pick && <p className="mt-1 text-sm font-bold text-white/85">{pick.description}</p>}
           </div>
-          {!spinning && pick && <div className="mt-3 flex justify-center"><QuestMeta quest={pick} /></div>}
+          {!spinning && pick && <div className="mt-3"><QuestMeta quest={pick} showPenalty /></div>}
           <div className="mt-5 flex gap-3">
             <button onClick={reroll} disabled={spinning || candidates.length < 2} className="btn btn-blue h-14 flex-1 text-lg">
               <Shuffle size={18} strokeWidth={3} /> Reroll

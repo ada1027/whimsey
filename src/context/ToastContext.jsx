@@ -25,7 +25,7 @@ export function ToastProvider({ children }) {
 export function ToastViewport() {
   const toasts = useContext(ToastListContext)
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-24 z-[60] flex flex-col items-center gap-2 px-4" aria-live="polite">
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[60] flex flex-col items-center gap-2 px-4" aria-live="polite">
       {toasts.map(({ id, message, tone, icon: Icon }) => (
         <div key={id} className={`pill animate-toast px-3 py-1.5 text-sm normal-case tracking-normal shadow-[0_4px_0_var(--outline)] ${FILL[tone]}`}>
           {Icon && <Icon size={16} strokeWidth={2.75} />}

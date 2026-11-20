@@ -8,46 +8,65 @@ export const CATEGORIES = {
   social: { label: 'Social', tone: 'blue' },
 }
 
+// limit = minutes you get once a quest is accepted; penalty applies if the timer runs out (or you give up).
 export const DIFFICULTY = {
-  easy: { label: 'Easy', xp: 15, tone: 'neon' },
-  medium: { label: 'Medium', xp: 30, tone: 'blue' },
-  hard: { label: 'Epic', xp: 60, tone: 'pink' },
+  easy: { label: 'Easy', xp: 15, tone: 'neon', limit: 15, penalty: { xp: 10, coins: 0 } },
+  medium: { label: 'Medium', xp: 30, tone: 'blue', limit: 30, penalty: { xp: 15, coins: 0 } },
+  hard: { label: 'Epic', xp: 60, tone: 'pink', limit: 60, penalty: { xp: 30, coins: 10 } },
 }
+
+/** Every failure also resets your streak. */
+export const penaltyFor = (difficulty) => ({ ...DIFFICULTY[difficulty].penalty, streakReset: true })
+
+export const penaltyLabel = ({ xp, coins }) =>
+  [xp && `-${xp} XP`, coins && `-${coins} coins`, 'Streak reset'].filter(Boolean).join(' & ')
 
 export const ACTIVITY_TAGS = ['solo', 'group', 'simple', 'outdoors', 'creative', 'mindful']
 
 /** Coins awarded alongside XP. */
 export const coinsFor = (xp) => Math.ceil(xp / 5)
 
-const quest = (id, title, description, category, difficulty, minutes, extra = {}) => ({
-  id, title, description, category, difficulty, minutes,
+const quest = (id, title, description, category, difficulty) => ({
+  id, title, description, category, difficulty,
   xp: DIFFICULTY[difficulty].xp,
-  status: 'available',
-  completedAt: null,
-  proof: null,
-  ...extra,
+  limit: DIFFICULTY[difficulty].limit,
 })
 
-export const SEED_QUESTS = [
-  quest('q1', 'Hydration Potion', 'Drink a full glass of water.', 'body', 'easy', 1, { status: 'active' }),
-  quest('q2', 'Stretch Ritual', 'Stretch for 5 minutes — neck, back and legs.', 'body', 'easy', 5, { status: 'active' }),
-  quest('q3', 'Dragon Walk', 'Take a 10-minute walk outside.', 'body', 'medium', 10),
-  quest('q4', 'Scroll of Knowledge', 'Read 10 pages of any book.', 'mind', 'medium', 15),
-  quest('q5', 'Doodle Spell', 'Sketch something you can see right now.', 'craft', 'easy', 5),
-  quest('q6', 'Tidy the Lair', 'Clear and wipe down your desk.', 'life', 'medium', 10),
-  quest('q7', 'Calm Mind', 'Do a 3-minute breathing exercise.', 'mind', 'easy', 3),
-  quest('q8', 'Send a Raven', "Message a friend you haven't talked to in a while.", 'social', 'easy', 2),
-  quest('q9', 'Morning Sunbeam', 'Step outside and soak up 5 minutes of daylight.', 'life', 'easy', 5, {
-    status: 'completed', completedAt: Date.now() - 3.6e6,
-    proof: { name: 'proof-photo.jpg', type: 'image/jpeg', size: 2_340_000, kind: 'photo', sample: true },
-  }),
-  quest('q10', 'Kitchen Alchemist', 'Cook a meal from scratch.', 'craft', 'hard', 30),
-  quest('q11', 'Gauntlet of Steps', 'Walk 5,000 steps today.', 'body', 'hard', 45),
-  quest('q12', 'Plant Whisperer', 'Water your plants or tidy a green space.', 'life', 'easy', 3),
-  quest('q13', "Bard's Practice", 'Play an instrument or sing for 10 minutes.', 'craft', 'medium', 10),
-  quest('q14', 'Digital Detox', 'Spend 30 minutes away from all screens.', 'mind', 'hard', 30),
-  quest('q15', 'Party Up', 'Do any quest together with a friend.', 'social', 'medium', 20),
+/** The pool daily quests are drawn from. */
+export const QUEST_CATALOG = [
+  quest('q1', 'Hydration Potion', 'Drink a full glass of water.', 'body', 'easy'),
+  quest('q2', 'Stretch Ritual', 'Stretch for 5 minutes — neck, back and legs.', 'body', 'easy'),
+  quest('q3', 'Dragon Walk', 'Take a 10-minute walk outside.', 'body', 'medium'),
+  quest('q4', 'Scroll of Knowledge', 'Read 10 pages of any book.', 'mind', 'medium'),
+  quest('q5', 'Doodle Spell', 'Sketch something you can see right now.', 'craft', 'easy'),
+  quest('q6', 'Tidy the Lair', 'Clear and wipe down your desk.', 'life', 'medium'),
+  quest('q7', 'Calm Mind', 'Do a 3-minute breathing exercise.', 'mind', 'easy'),
+  quest('q8', 'Send a Raven', "Message a friend you haven't talked to in a while.", 'social', 'easy'),
+  quest('q9', 'Morning Sunbeam', 'Step outside and soak up 5 minutes of daylight.', 'life', 'easy'),
+  quest('q10', 'Kitchen Alchemist', 'Cook a meal from scratch.', 'craft', 'hard'),
+  quest('q11', 'Gauntlet of Steps', 'Walk 5,000 steps.', 'body', 'hard'),
+  quest('q12', 'Plant Whisperer', 'Water your plants or tidy a green space.', 'life', 'easy'),
+  quest('q13', "Bard's Practice", 'Play an instrument or sing for 10 minutes.', 'craft', 'medium'),
+  quest('q14', 'Digital Detox', 'Spend 30 minutes away from all screens.', 'mind', 'hard'),
+  quest('q15', 'Party Up', 'Do any quest together with a friend.', 'social', 'medium'),
 ]
+export const CATALOG_BY_ID = Object.fromEntries(QUEST_CATALOG.map((q) => [q.id, q]))
+
+export const DAILY_COUNT = 3
+
+/** Local calendar day, e.g. "2026-11-20". */
+export const dayKey = (d = new Date()) => d.toLocaleDateString('en-CA')
+
+/** Today's 3 dailies: one Easy, one Medium, one Epic, the same for everyone on a given day. */
+export function pickDailies(date) {
+  let h = 2166136261
+  for (const c of date) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
+  const next = () => (h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0) / 2 ** 32
+  return ['easy', 'medium', 'hard'].map((d) => {
+    const pool = QUEST_CATALOG.filter((q) => q.difficulty === d)
+    return pool[Math.floor(next() * pool.length)].id
+  })
+}
 
 /* ---------- Avatar locker ---------- */
 
@@ -121,12 +140,13 @@ export const MAX_REROLLS = 3 // per group-queue round
 
 /** Shared activities a group queue can pop. */
 export const GROUP_QUESTS = [
-  { key: 'stretch', title: 'Group Stretch Break', description: 'Everyone stretches for 5 minutes at the same time.', category: 'body', difficulty: 'easy', minutes: 5 },
-  { key: 'sketch', title: 'Coffee & Sketch Together', description: 'Grab a drink and sketch the same object, then share.', category: 'craft', difficulty: 'medium', minutes: 15 },
-  { key: 'walk', title: 'Squad Walk', description: 'Each take a 15-minute walk and snap one cool thing you see.', category: 'body', difficulty: 'medium', minutes: 15 },
-  { key: 'gratitude', title: 'Gratitude Round', description: 'Each share one thing you are grateful for today.', category: 'social', difficulty: 'easy', minutes: 5 },
-  { key: 'tidy', title: 'Speed Tidy Challenge', description: 'Race to tidy one room in 10 minutes.', category: 'life', difficulty: 'easy', minutes: 10 },
-  { key: 'water', title: 'Hydration Toast', description: 'Everyone drinks a full glass of water — cheers on camera!', category: 'body', difficulty: 'easy', minutes: 2 },
+  // limit = timer in minutes once the party accepts
+  { key: 'stretch', title: 'Group Stretch Break', description: 'Everyone stretches for 5 minutes at the same time.', category: 'body', difficulty: 'easy', minutes: 5, limit: DIFFICULTY.easy.limit },
+  { key: 'sketch', title: 'Coffee & Sketch Together', description: 'Grab a drink and sketch the same object, then share.', category: 'craft', difficulty: 'medium', minutes: 15, limit: DIFFICULTY.medium.limit },
+  { key: 'walk', title: 'Squad Walk', description: 'Each take a 15-minute walk and snap one cool thing you see.', category: 'body', difficulty: 'medium', minutes: 15, limit: DIFFICULTY.medium.limit },
+  { key: 'gratitude', title: 'Gratitude Round', description: 'Each share one thing you are grateful for today.', category: 'social', difficulty: 'easy', minutes: 5, limit: DIFFICULTY.easy.limit },
+  { key: 'tidy', title: 'Speed Tidy Challenge', description: 'Race to tidy one room in 10 minutes.', category: 'life', difficulty: 'easy', minutes: 10, limit: DIFFICULTY.easy.limit },
+  { key: 'water', title: 'Hydration Toast', description: 'Everyone drinks a full glass of water — cheers on camera!', category: 'body', difficulty: 'easy', minutes: 2, limit: DIFFICULTY.easy.limit },
 ]
 
 /** "Seed 8 sample users": searchable bot profiles that auto-accept friend requests. */
@@ -150,11 +170,14 @@ export const DEFAULT_PROFILE = {
   tags: ['solo', 'simple'],
   gamemode: 'simple',
   level: 1,
-  xp: 15,
+  xp: 0,
   maxXp: 100,
   coins: 40,
-  streak: 3,
+  streak: 0,
+  lastStreakDay: null,
   equipped: DEFAULT_EQUIPPED,
   purchased: [],
-  quests: SEED_QUESTS,
+  quests: [], // attempts: active, completed and failed quests (fresh accounts start empty)
+  daily: null, // { date, ids } — rolled on load and at midnight
+  version: 3,
 }

@@ -10,7 +10,7 @@ const NAV_ITEMS = [
 
 /** Bottom tab bar, pinned to the bottom of the phone screen. */
 export default function NavBar({ view, onChange }) {
-  const { activeQuests } = useUser()
+  const { activeQuest } = useUser()
 
   return (
     <nav aria-label="Main" className="relative z-30 shrink-0 border-t-[3px] border-outline bg-surface">
@@ -29,10 +29,8 @@ export default function NavBar({ view, onChange }) {
               >
                 <Icon size={22} strokeWidth={2.75} />
                 {label}
-                {id === 'quests' && activeQuests.length > 0 && (
-                  <span className="absolute -top-2 right-[calc(50%-26px)] pill bg-pink px-1.5 text-[11px] leading-4 text-white">
-                    {activeQuests.length}
-                  </span>
+                {id === 'quests' && activeQuest && (
+                  <span className="live-dot absolute -top-1 right-[calc(50%-20px)] size-3.5 rounded-full border-[3px] border-outline bg-pink" aria-label="Quest in progress" />
                 )}
               </button>
             </li>

@@ -198,6 +198,7 @@ export function OnlineProvider({ children }) {
 
   const addGroupQuest = user.addGroupQuest
   const completeQuest = user.completeQuest
+  const setPartyProofs = user.setPartyProofs
   useEffect(() => {
     if (!party?.current_quest || party.status === 'lobby' || party.status === 'voting') return
     const id = partyQuestId(party)
@@ -207,9 +208,22 @@ export function OnlineProvider({ children }) {
         id,
         partyId: party.id,
         quest: party.current_quest,
+        // Everyone's timer counts down from the moment the party accepted.
+        acceptedAt: Date.parse(party.current_quest.acceptedAt) || Date.now(),
         members: party.members.filter((m) => m.user_id !== me).map((m) => ({ id: m.user_id, name: m.profile.username, look: m.look })),
       })
       return
+    }
+    // Keep a copy of everyone's proof on the local quest, for the Done tab (the party row is reset later).
+    if (local) {
+      const proofs = party.members.map((m) => ({
+        id: m.user_id,
+        name: m.user_id === me ? 'You' : m.profile.username,
+        look: m.look,
+        url: m.proof_url?.startsWith('failed:') ? null : m.proof_url,
+        failed: !!m.proof_url?.startsWith('failed:'),
+      }))
+      if (JSON.stringify(proofs) !== JSON.stringify(local.partyProofs ?? null)) setPartyProofs(id, proofs)
     }
     // A teammate submitted proof "together" → finish it here too.
     const mine = party.members.find((m) => m.user_id === me)
@@ -218,7 +232,18 @@ export function OnlineProvider({ children }) {
       completeQuest(id, { name: url.startsWith('sample:') ? url.slice(7) : 'Team proof', kind: 'photo', url, shared: true })
       toast('A teammate submitted proof for the whole party!', { tone: 'blue', icon: Users })
     }
-  }, [party, me, addGroupQuest, completeQuest, toast])
+  }, [party, me, addGroupQuest, completeQuest, setPartyProofs, toast])
+
+  /* ---------------- group quest failed on this device → free the party ---------------- */
+
+  const failure = user.profile.lastFailure
+  const reportedFailure = useRef(null)
+  useEffect(() => {
+    if (!failure?.group || reportedFailure.current === failure.id) return
+    reportedFailure.current = failure.id
+    // Counts as "done" for the party (marked failed) so teammates can still finish.
+    api.submitGroupCompletion(failure.partyId, me, 'separate', `failed:${failure.reason}`).then(refresh).catch(() => {})
+  }, [failure, me, refresh])
 
   /* ---------------- join / kick notifications ---------------- */
 

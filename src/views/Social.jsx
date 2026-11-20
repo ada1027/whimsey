@@ -1,5 +1,5 @@
 import {
-  Bot, Check, Crown, DoorOpen, Hourglass, Loader2, LogIn, Plus, RefreshCw, Search, Send, Swords, UserCheck, UserPlus, Users, Vote, X,
+  Bot, Check, Crown, DoorOpen, Hourglass, Loader2, Lock, LogIn, Plus, RefreshCw, Search, Send, Swords, UserCheck, UserPlus, Users, Vote, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import Character from '../components/Character.jsx'
@@ -12,10 +12,17 @@ import { parseAvatar } from '../lib/api.js'
 
 const lookOf = (profile) => parseAvatar(profile?.avatar).look
 
-export default function Social({ onNavigate }) {
+/** params.scrollTo: 'friends' | 'ranks' — smooth-scrolls to that section once data has loaded. */
+export default function Social({ onNavigate, params = {} }) {
   const { loaded, error } = useOnline()
   const [adding, setAdding] = useState(false)
   const [inviting, setInviting] = useState(false)
+
+  useEffect(() => {
+    if (!loaded || !params.scrollTo) return
+    const t = setTimeout(() => document.getElementById(`${params.scrollTo}-section`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+    return () => clearTimeout(t)
+  }, [loaded, params.scrollTo])
 
   return (
     <div className="space-y-5">
@@ -58,8 +65,10 @@ export default function Social({ onNavigate }) {
 function PartyCard({ onNavigate, onInvite }) {
   const online = useOnline()
   const { party, me, isLeader, inParty, partyLeader, myMember, hasBots, searching } = online
-  const { look, profile } = useUser()
+  const { look, profile, activeQuest } = useUser()
   const toast = useToast()
+  // One quest at a time: an active solo quest blocks queueing / readying up.
+  const busySolo = activeQuest && !activeQuest.group ? activeQuest : null
 
   // Solo (no party row yet): show just you as leader.
   const members = party?.members ?? [{ user_id: me, profile: { username: profile.username }, look, is_ready: true }]
@@ -138,6 +147,11 @@ function PartyCard({ onNavigate, onInvite }) {
           <div className="flex h-14 items-center justify-center gap-2 rounded-2xl border-[3px] border-outline bg-gold font-display text-xl uppercase text-on-accent">
             🎉 Party quest complete!
           </div>
+        ) : busySolo && status === 'lobby' ? (
+          <>
+            <button disabled className="btn btn-ghost h-14 w-full text-lg"><Lock size={18} strokeWidth={3} /> Finish active quest first</button>
+            <p className="mt-2 text-center text-xs font-bold text-white/80">You&apos;re on &ldquo;{busySolo.title}&rdquo;. Complete it before joining a group quest.</p>
+          </>
         ) : isLeader ? (
           members.length < 2 ? (
             <>
@@ -184,7 +198,9 @@ function PartySlot({ member, isMe, leader, status, onKick }) {
   const name = isMe ? 'You' : member.profile.username
   const badge =
     status === 'lobby' ? (leader ? null : member.is_ready ? { tone: 'bg-neon text-on-accent', text: 'Ready' } : { tone: 'bg-surface-3 text-ink', text: '…' })
-      : status === 'active_quest' || status === 'completed' ? (member.has_completed ? { tone: 'bg-neon text-on-accent', text: 'Done' } : { tone: 'bg-surface-3 text-ink', text: '…' })
+      : status === 'active_quest' || status === 'completed'
+        ? (member.proof_url?.startsWith('failed:') ? { tone: 'bg-pink text-white', text: 'Failed' }
+          : member.has_completed ? { tone: 'bg-neon text-on-accent', text: 'Done' } : { tone: 'bg-surface-3 text-ink', text: '…' })
         : null
   return (
     <div className="relative flex flex-col items-center gap-1">
@@ -334,7 +350,7 @@ function FriendAction({ profile }) {
 function FriendsList({ onAdd }) {
   const { friends, outgoing, isLeader, partyLeader, removeFriendship } = useOnline()
   return (
-    <section className="card p-4">
+    <section id="friends-section" className="card scroll-mt-4 p-4">
       <SectionTitle icon={Users} tone="pink">Friends <Pill tone="dark">{friends.length}</Pill></SectionTitle>
       {!isLeader && <p className="mb-2 text-xs font-bold text-muted">You&apos;re in {partyLeader?.profile.username}&apos;s party — only the leader can invite.</p>}
       {friends.length === 0 && outgoing.length === 0 ? (
@@ -372,7 +388,7 @@ function Leaderboard() {
   const { leaderboard } = useOnline()
   const medal = ['bg-gold text-on-accent', 'bg-[#d9dcf0] text-[#1a1033]', 'bg-[#e8935a] text-[#1a1033]']
   return (
-    <section className="card p-4">
+    <section id="ranks-section" className="card scroll-mt-4 p-4">
       <SectionTitle icon={Crown} tone="gold">Friend ranks</SectionTitle>
       <ol className="space-y-2">
         {leaderboard.map((p, i) => (

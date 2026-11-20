@@ -11,8 +11,9 @@ import { FILL } from '../data/tones.js'
  *   [pro tools] [ YOU + invite ] [friends / guild]
  *   [ PLAY ] [ CURRENT TASK ] [ GAMEMODE ]
  */
-export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
-  const { profile, look, title, activeQuests, completedQuests, currentQuest: current } = useUser()
+export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode, onOpenActive }) {
+  const { profile, look, title, dailies, completedQuests, activeQuest: current } = useUser()
+  const dailiesLeft = dailies.filter((d) => !d.attempt).length
   const { party, inParty } = useOnline()
   const toast = useToast()
   const pro = profile.gamemode === 'pro'
@@ -20,7 +21,7 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
   return (
     <div className="space-y-5">
       {/* ---------- Pinned: the quest to do right now ---------- */}
-      <CurrentQuestCard queueCount={activeQuests.length} />
+      <CurrentQuestCard />
 
       {/* ---------- Stage ---------- */}
       <section className="card stage relative overflow-hidden px-2 py-4">
@@ -32,11 +33,11 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
           <div className="flex flex-col gap-4 self-start pt-6">
             {pro && (
               <>
-                <SideTile icon={ClipboardList} label="Daily" tone="blue" badge={activeQuests.length ? `x${activeQuests.length}` : null}
-                  onClick={() => onNavigate('quests', { tab: 'queue' })} />
+                <SideTile icon={ClipboardList} label="Daily" tone="blue" badge={dailiesLeft ? `x${dailiesLeft}` : null}
+                  onClick={() => onNavigate('quests', { tab: 'dailies' })} />
                 <SideTile icon={CircleHelp} label="Mystery" tone="grape"
                   onClick={() => toast('A mystery event appears tomorrow…', { tone: 'grape', icon: CircleHelp })} />
-                <SideTile icon={Trophy} label="Ranks" tone="gold" onClick={() => onNavigate('social')} />
+                <SideTile icon={Trophy} label="Ranks" tone="gold" onClick={() => onNavigate('social', { scrollTo: 'ranks' })} />
               </>
             )}
           </div>
@@ -63,7 +64,7 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
 
           {/* right column: friends / guild */}
           <div className="flex flex-col gap-4 self-start pt-6">
-            <SideTile icon={Users} label="Friends" tone="pink" onClick={() => onNavigate('social')}
+            <SideTile icon={Users} label="Friends" tone="pink" onClick={() => onNavigate('social', { scrollTo: 'friends' })}
               badge={inParty ? `${party.members.length}` : null} />
             {pro && (
               <SideTile icon={Shield} label="Guild" tone="neon"
@@ -77,16 +78,16 @@ export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode }) {
       <div className="grid grid-cols-2 gap-3">
         <button onClick={onOpenPlay} className="btn btn-gold col-span-2 h-24 flex-col gap-0 rounded-3xl">
           <span className="flex items-center gap-2 text-5xl leading-none"><Play size={36} fill="currentColor" strokeWidth={2.5} /> Play</span>
-          <span className="font-sans text-xs font-extrabold normal-case tracking-normal">Get a random quest</span>
+          <span className="font-sans text-xs font-extrabold normal-case tracking-normal">{current ? 'Finish your active quest first' : 'Spin a random daily'}</span>
         </button>
 
         <button
-          onClick={() => onNavigate('quests', { tab: current ? 'queue' : 'board' })}
+          onClick={() => (current ? onOpenActive() : onNavigate('quests', { tab: 'dailies' }))}
           className="btn btn-blue h-24 min-w-0 flex-col gap-1 rounded-3xl px-3"
         >
           <span className="flex items-center gap-1.5 text-lg leading-none"><Target size={18} strokeWidth={3} /> Current task</span>
           <span className="w-full truncate font-sans text-xs font-extrabold normal-case tracking-normal">
-            {current ? `${activeQuests.length} in queue` : 'None — browse quests'}
+            {current ? current.title : `None — ${dailiesLeft} dailies left`}
           </span>
         </button>
 

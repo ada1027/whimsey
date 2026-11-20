@@ -1,32 +1,95 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { applyXp } from '../data/progression.js'
-import { coinsFor, DEFAULT_PROFILE, DIFFICULTY, ITEM_BY_ID, isOwned, PARTY_BONUS, resolveLook } from '../data/seed.js'
+import {
+  CATALOG_BY_ID, coinsFor, dayKey, DEFAULT_PROFILE, DIFFICULTY, ITEM_BY_ID, isOwned, PARTY_BONUS, penaltyFor, pickDailies, resolveLook,
+} from '../data/seed.js'
 
 const UserContext = createContext(null)
+const MIN = 60_000
 
 const setQuest = (state, id, patch) => ({
   ...state,
   quests: state.quests.map((q) => (q.id === id ? { ...q, ...patch } : q)),
 })
 
+const hasActive = (state) => state.quests.some((q) => q.status === 'active')
+
+/** Consecutive days with at least one completed quest. */
+function bumpStreak(state) {
+  const today = dayKey()
+  if (state.lastStreakDay === today) return {}
+  const yesterday = dayKey(new Date(Date.now() - 864e5))
+  return { streak: state.lastStreakDay === yesterday ? state.streak + 1 : 1, lastStreakDay: today }
+}
+
 function reducer(state, action) {
   switch (action.type) {
-    case 'ACCEPT_QUEST': {
-      const q = state.quests.find((x) => x.id === action.id)
-      if (!q || q.status !== 'available') return state
+    case 'ROLL_DAILIES': {
+      if (state.daily?.date === action.date) return state
+      return { ...state, daily: { date: action.date, ids: pickDailies(action.date) } }
+    }
+
+    /** Accept one of today's dailies — only when no other quest is active. */
+    case 'ACCEPT_DAILY': {
+      const { daily } = state
+      const t = CATALOG_BY_ID[action.catalogId]
+      if (!t || !daily?.ids.includes(t.id) || hasActive(state)) return state
+      const id = `daily-${daily.date}-${t.id}`
+      if (state.quests.some((q) => q.id === id)) return state // one attempt per daily per day
+      const now = Date.now()
+      const q = {
+        ...t,
+        id,
+        catalogId: t.id,
+        date: daily.date,
+        status: 'active',
+        acceptedAt: now,
+        expiresAt: now + t.limit * MIN,
+        penalty: penaltyFor(t.difficulty),
+        completedAt: null,
+        proof: null,
+      }
       return {
-        ...setQuest(state, action.id, { status: 'active', acceptedAt: Date.now() }),
-        // Transient: drives the "Quest accepted" banner (not persisted).
-        lastAccepted: action.notify === false ? state.lastAccepted : { id: Date.now(), questId: q.id, title: q.title },
+        ...state,
+        quests: [q, ...state.quests],
+        // Transient: expands the active-quest dock for a few seconds (not persisted).
+        lastAccepted: { id: now, questId: id, title: t.title },
       }
     }
-    case 'DROP_QUEST': {
-      const q = state.quests.find((x) => x.id === action.id)
-      if (!q || q.status !== 'active') return state
-      // Custom and group quests have no board slot to return to.
-      if (q.custom || q.group) return { ...state, quests: state.quests.filter((x) => x.id !== action.id) }
-      return setQuest(state, action.id, { status: 'available', acceptedAt: null })
+
+    /** Added on every teammate's device when their party accepts a quest (see OnlineContext). */
+    case 'ADD_GROUP_QUEST': {
+      const { id, quest: t, members, partyId, acceptedAt } = action.payload
+      if (state.quests.some((q) => q.id === id)) return state
+      const baseXp = DIFFICULTY[t.difficulty].xp
+      const started = acceptedAt ?? Date.now()
+      const limit = t.limit ?? DIFFICULTY[t.difficulty].limit
+      const q = {
+        id,
+        partyId,
+        title: t.title,
+        description: t.description,
+        category: t.category,
+        difficulty: t.difficulty,
+        limit,
+        baseXp,
+        xp: Math.round(baseXp * (1 + PARTY_BONUS)),
+        group: true,
+        members,
+        status: 'active',
+        acceptedAt: started,
+        expiresAt: started + limit * MIN, // same deadline on every device
+        penalty: penaltyFor(t.difficulty),
+        completedAt: null,
+        proof: null,
+      }
+      return {
+        ...state,
+        quests: [q, ...state.quests],
+        lastAccepted: { id: Date.now(), questId: id, title: t.title },
+      }
     }
+
     case 'COMPLETE_QUEST': {
       const q = state.quests.find((x) => x.id === action.id)
       if (!q || q.status !== 'active') return state
@@ -35,10 +98,12 @@ function reducer(state, action) {
       return {
         ...setQuest(state, action.id, { status: 'completed', completedAt: Date.now(), proof: action.proof ?? null }),
         ...next,
+        ...bumpStreak(state),
         coins: state.coins + coins,
         // Transient: drives the reward overlay (not persisted).
         lastReward: {
           id: Date.now(),
+          questId: q.id,
           title: q.title,
           xp: q.xp,
           coins,
@@ -49,48 +114,26 @@ function reducer(state, action) {
         },
       }
     }
-    case 'ADD_QUEST': {
-      const { title, description = '', category = 'life', difficulty = 'easy', minutes = 5 } = action.quest
-      const q = {
-        id: crypto.randomUUID?.() ?? String(Date.now()),
-        title, description, category, difficulty, minutes,
-        xp: DIFFICULTY[difficulty].xp,
-        status: 'active',
-        custom: true,
-        acceptedAt: Date.now(),
-        completedAt: null,
-        proof: null,
-      }
-      return { ...state, quests: [q, ...state.quests] }
-    }
-    case 'ADD_GROUP_QUEST': {
-      // Added on every teammate's device when their party accepts a quest (see OnlineContext).
-      const { id, quest: t, members, partyId } = action.payload
-      if (state.quests.some((q) => q.id === id)) return state
-      const baseXp = DIFFICULTY[t.difficulty].xp
-      const q = {
-        id,
-        partyId,
-        title: t.title,
-        description: t.description,
-        category: t.category,
-        difficulty: t.difficulty,
-        minutes: t.minutes,
-        baseXp,
-        xp: Math.round(baseXp * (1 + PARTY_BONUS)),
-        group: true,
-        members,
-        status: 'active',
-        acceptedAt: Date.now(),
-        completedAt: null,
-        proof: null,
-      }
+
+    /** Time ran out (or the player gave up): apply the penalty and free the active slot. */
+    case 'FAIL_QUEST': {
+      const q = state.quests.find((x) => x.id === action.id)
+      if (!q || q.status !== 'active') return state
+      const pen = q.penalty ?? penaltyFor(q.difficulty)
       return {
-        ...state,
-        quests: [q, ...state.quests],
-        lastAccepted: { id: Date.now(), questId: id, title: t.title },
+        ...setQuest(state, action.id, { status: 'failed', failedAt: Date.now(), failReason: action.reason }),
+        xp: Math.max(0, state.xp - pen.xp), // never drops you a level
+        coins: Math.max(0, state.coins - pen.coins),
+        streak: 0,
+        lastStreakDay: null,
+        lastFailure: { id: Date.now(), questId: q.id, title: q.title, penalty: pen, reason: action.reason, group: !!q.group, partyId: q.partyId },
       }
     }
+
+    /** Snapshot of teammates' proofs for a group quest, shown later in the Done tab. */
+    case 'SET_PARTY_PROOFS':
+      return setQuest(state, action.id, { partyProofs: action.proofs })
+
     case 'EQUIP': {
       const item = ITEM_BY_ID[action.itemId]
       if (!item || !isOwned(item, state)) return state
@@ -113,63 +156,93 @@ function reducer(state, action) {
       return { ...state, lastReward: null }
     case 'DISMISS_ACCEPTED':
       return { ...state, lastAccepted: null }
+    case 'DISMISS_FAILURE':
+      return { ...state, lastFailure: null }
     case 'RESET':
-      return { ...DEFAULT_PROFILE }
+      return { ...DEFAULT_PROFILE, daily: { date: dayKey(), ids: pickDailies(dayKey()) } }
     default:
       return state
   }
 }
 
 function load(storageKey) {
+  let state = DEFAULT_PROFILE
   try {
     const raw = localStorage.getItem(storageKey)
     if (raw) {
-      // Party and friends used to live here; they're now synced via OnlineContext.
       const { friends: _f, party: _p, ...saved } = JSON.parse(raw)
-      return { ...DEFAULT_PROFILE, ...saved }
+      state = saved.version === 3
+        ? { ...DEFAULT_PROFILE, ...saved }
+        : {
+            // Older saves: keep identity, progress and finished quests; start the new daily loop clean.
+            ...DEFAULT_PROFILE,
+            ...Object.fromEntries(['username', 'bio', 'tags', 'gamemode', 'level', 'xp', 'maxXp', 'coins', 'equipped', 'purchased']
+              .filter((k) => k in saved).map((k) => [k, saved[k]])),
+            quests: (saved.quests ?? []).filter((q) => q.status === 'completed'),
+          }
     }
   } catch { /* storage unavailable or corrupt */ }
-  return DEFAULT_PROFILE
+  const today = dayKey()
+  return state.daily?.date === today ? state : { ...state, daily: { date: today, ids: pickDailies(today) } }
 }
 
 /** Local progress (quests, locker, XP). Each adventurer gets their own storageKey. */
 export function UserProvider({ storageKey, children }) {
   const [state, dispatch] = useReducer(reducer, storageKey, load)
 
-  // Persist everything except the transient reward event.
+  // Persist everything except transient UI events.
   useEffect(() => {
-    const { lastReward: _reward, lastAccepted: _accepted, ...persisted } = state
+    const { lastReward: _r, lastAccepted: _a, lastFailure: _f, ...persisted } = state
     try { localStorage.setItem(storageKey, JSON.stringify(persisted)) } catch { /* ignore */ }
   }, [state, storageKey])
 
-  const value = useMemo(() => {
-    const by = (s) => state.quests.filter((q) => q.status === s)
-    const completedQuests = by('completed').sort((a, b) => b.completedAt - a.completedAt)
+  // Expire timed-out quests (also catches quests that ran out while the app was closed),
+  // and roll new dailies after midnight.
+  const active = state.quests.find((q) => q.status === 'active')
+  useEffect(() => {
+    const tick = () => {
+      if (active?.expiresAt && Date.now() >= active.expiresAt) dispatch({ type: 'FAIL_QUEST', id: active.id, reason: 'expired' })
+      dispatch({ type: 'ROLL_DAILIES', date: dayKey() })
+    }
+    tick()
+    const iv = setInterval(tick, 1000)
+    return () => clearInterval(iv)
+  }, [active?.id, active?.expiresAt])
 
-    const activeQuests = by('active').sort((a, b) => (b.acceptedAt ?? 0) - (a.acceptedAt ?? 0))
+  const value = useMemo(() => {
+    const activeQuest = state.quests.filter((q) => q.status === 'active').sort((a, b) => b.acceptedAt - a.acceptedAt)[0] ?? null
+    const completedQuests = state.quests.filter((q) => q.status === 'completed')
+    const history = state.quests
+      .filter((q) => q.status === 'completed' || q.status === 'failed')
+      .sort((a, b) => (b.completedAt ?? b.failedAt) - (a.completedAt ?? a.failedAt))
+    const dailies = (state.daily?.ids ?? []).map((cid) => ({
+      ...CATALOG_BY_ID[cid],
+      attempt: state.quests.find((q) => q.catalogId === cid && q.date === state.daily.date) ?? null,
+    }))
 
     return {
       profile: state,
       look: resolveLook(state.equipped),
       title: ITEM_BY_ID[state.equipped.title]?.name ?? 'Rookie',
-      availableQuests: by('available'),
-      activeQuests,
-      /** The quest to do right now: the most recently accepted active quest. */
-      currentQuest: activeQuests[0] ?? null,
+      dailies,
+      /** The one quest in progress (solo or group), or null. */
+      activeQuest,
       completedQuests,
-      /** notify: false skips the "Quest accepted" banner (e.g. when we navigate to the quest instead). */
-      acceptQuest: (id, { notify = true } = {}) => dispatch({ type: 'ACCEPT_QUEST', id, notify }),
-      /** payload: { id, quest, members, partyId } */
+      /** Completed + failed, newest first (the Done tab). */
+      history,
+      acceptDaily: (catalogId) => dispatch({ type: 'ACCEPT_DAILY', catalogId }),
+      /** payload: { id, quest, members, partyId, acceptedAt } */
       addGroupQuest: (payload) => dispatch({ type: 'ADD_GROUP_QUEST', payload }),
-      dropQuest: (id) => dispatch({ type: 'DROP_QUEST', id }),
-      /** proof: { name, type, size, kind, sample } — metadata only; no file data is stored. */
+      /** proof: { name, type, size, kind, sample, url? } — metadata only; solo files stay on the device. */
       completeQuest: (id, proof) => dispatch({ type: 'COMPLETE_QUEST', id, proof }),
-      addQuest: (quest) => dispatch({ type: 'ADD_QUEST', quest }),
+      failQuest: (id, reason = 'expired') => dispatch({ type: 'FAIL_QUEST', id, reason }),
+      setPartyProofs: (id, proofs) => dispatch({ type: 'SET_PARTY_PROOFS', id, proofs }),
       equip: (itemId) => dispatch({ type: 'EQUIP', itemId }),
       buyItem: (itemId) => dispatch({ type: 'BUY_ITEM', itemId }),
       updateProfile: (patch) => dispatch({ type: 'UPDATE_PROFILE', patch }),
       dismissReward: () => dispatch({ type: 'DISMISS_REWARD' }),
       dismissAccepted: () => dispatch({ type: 'DISMISS_ACCEPTED' }),
+      dismissFailure: () => dispatch({ type: 'DISMISS_FAILURE' }),
       resetProfile: () => dispatch({ type: 'RESET' }),
     }
   }, [state])
