@@ -1,7 +1,8 @@
 -- =====================================================================
 -- WHIMSEY · Supabase schema (prototype)
 -- Paste this whole file into Supabase → SQL Editor → New query → Run.
--- Safe to run more than once.
+-- Safe to run more than once: every statement is CREATE ... IF NOT EXISTS / ADD COLUMN IF NOT EXISTS /
+-- CREATE OR REPLACE / DROP ... IF EXISTS, and older tables are upgraded in place.
 --
 -- ⚠️ PROTOTYPE ONLY: Row Level Security is enabled but the policies are
 -- wide open, so anyone with your anon key (which ships in the web app)
@@ -31,6 +32,16 @@ create table if not exists public.profiles (
 );
 -- usernames are unique regardless of case ("Ada" = "ada")
 create unique index if not exists profiles_username_lower_idx on public.profiles (lower(username));
+-- Upgrade tables created by older versions of this file (safe to re-run)
+alter table public.profiles add column if not exists avatar     text;
+alter table public.profiles add column if not exists level      int not null default 1;
+alter table public.profiles add column if not exists xp         int not null default 0;
+alter table public.profiles add column if not exists coins      int not null default 0;
+alter table public.profiles add column if not exists streak     int not null default 0;
+alter table public.profiles add column if not exists status     text not null default 'online';
+alter table public.profiles add column if not exists is_bot     boolean not null default false;
+alter table public.profiles add column if not exists created_at timestamptz not null default now();
+alter table public.profiles add column if not exists updated_at timestamptz not null default now();
 
 create table if not exists public.friendships (
   id          uuid primary key default gen_random_uuid(),
@@ -42,6 +53,8 @@ create table if not exists public.friendships (
   check (user_id <> friend_id)
 );
 create index if not exists friendships_friend_idx on public.friendships (friend_id);
+alter table public.friendships add column if not exists status     text not null default 'pending';
+alter table public.friendships add column if not exists created_at timestamptz not null default now();
 
 create table if not exists public.parties (
   id            uuid primary key default gen_random_uuid(),
@@ -55,6 +68,12 @@ create table if not exists public.parties (
   updated_at    timestamptz not null default now()
 );
 create index if not exists parties_leader_idx on public.parties (leader_id);
+alter table public.parties add column if not exists status        text not null default 'lobby';
+alter table public.parties add column if not exists current_quest jsonb;
+alter table public.parties add column if not exists rerolls_used  int not null default 0;
+alter table public.parties add column if not exists votes         jsonb not null default '{}'::jsonb;
+alter table public.parties add column if not exists created_at    timestamptz not null default now();
+alter table public.parties add column if not exists updated_at    timestamptz not null default now();
 
 create table if not exists public.party_members (
   id              uuid primary key default gen_random_uuid(),
@@ -67,6 +86,11 @@ create table if not exists public.party_members (
   joined_at       timestamptz not null default now()
 );
 create index if not exists party_members_party_idx on public.party_members (party_id);
+alter table public.party_members add column if not exists is_ready        boolean not null default false;
+alter table public.party_members add column if not exists has_completed   boolean not null default false;
+alter table public.party_members add column if not exists completion_mode text;
+alter table public.party_members add column if not exists proof_url       text;
+alter table public.party_members add column if not exists joined_at       timestamptz not null default now();
 
 -- Friend activity feed: one post per completed quest (Strava / BeReal-style proof)
 create table if not exists public.quest_feed (
@@ -85,6 +109,15 @@ create table if not exists public.quest_feed (
   unique (user_id, quest_ref)
 );
 create index if not exists quest_feed_user_created_idx on public.quest_feed (user_id, created_at desc);
+alter table public.quest_feed add column if not exists category         text;
+alter table public.quest_feed add column if not exists proof_url        text;
+alter table public.quest_feed add column if not exists completion_tag   text;
+alter table public.quest_feed add column if not exists duration_seconds int;
+alter table public.quest_feed add column if not exists party            jsonb;
+alter table public.quest_feed add column if not exists reactions        jsonb not null default '{}'::jsonb;
+alter table public.quest_feed add column if not exists created_at       timestamptz not null default now();
+-- the app posts with ON CONFLICT (user_id, quest_ref), which needs this unique index
+create unique index if not exists quest_feed_user_ref_idx on public.quest_feed (user_id, quest_ref);
 
 -- Notification bell inbox (written by the acting player's app)
 create table if not exists public.notifications (
@@ -97,6 +130,10 @@ create table if not exists public.notifications (
   created_at  timestamptz not null default now()
 );
 create index if not exists notifications_user_created_idx on public.notifications (user_id, created_at desc);
+alter table public.notifications add column if not exists actor_id   uuid references public.profiles (id) on delete cascade;
+alter table public.notifications add column if not exists payload    jsonb not null default '{}'::jsonb;
+alter table public.notifications add column if not exists read       boolean not null default false;
+alter table public.notifications add column if not exists created_at timestamptz not null default now();
 
 -- ---------------------------------------------------------------------
 -- Keep updated_at fresh (also used as a "last seen" heartbeat)

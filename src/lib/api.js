@@ -4,6 +4,77 @@ import { fallbackCompanionName, normalizeLook } from '../data/companion.js'
 import { db } from './db.js'
 
 const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
+
+/* ---------- missing-table fallback ----------
+ * If quest_feed / notifications (or their RPCs) don't exist yet in Supabase — i.e. supabase_schema.sql
+ * hasn't been (re)run — PostgREST answers 404 (PGRST205 / PGRST202). Instead of crashing or showing an
+ * empty UI we fall back to seeded demo posts/notifications kept in memory, and flag it so the UI can say
+ * "run supabase_schema.sql".
+ */
+export const isMissingTable = (e) =>
+  ['PGRST205', 'PGRST202', '42P01', '42883'].includes(e?.code) ||
+  e?.status === 404 ||
+  /schema cache|does not exist|could not find the (table|function)/i.test(e?.message ?? '')
+
+const offline = { feed: false, notifications: false }
+export const offlineTables = () => ({ ...offline })
+let warned = false
+function goOffline(kind, e) {
+  offline[kind] = true
+  if (!warned) {
+    warned = true
+    console.warn(`[whimsey] Supabase table missing (${e?.code ?? e?.status ?? 'unknown'}). Using demo ${kind} — run supabase_schema.sql in the Supabase SQL Editor to enable it.`)
+  }
+}
+
+const SEEDED_AT = Date.now()
+const localPosts = [] // your own completions while quest_feed is missing
+const localReactions = new Map() // postId → { kind: Set(userIds) }
+const localRead = new Set()
+const sampleId = (name) => `sample-${name}`
+
+/** Read-only stand-ins for the sample users (used only in demo-fallback mode). */
+export const fallbackProfiles = () => SAMPLE_USERS.map(({ look, companion, ...u }) => ({
+  ...u, id: sampleId(u.username), avatar: encodeAvatar(look, null, companion), status: 'online', is_bot: true,
+  created_at: new Date(SEEDED_AT).toISOString(), updated_at: new Date().toISOString(),
+}))
+
+function withLocalReactions(post) {
+  const extra = localReactions.get(post.id)
+  if (!extra) return post
+  const reactions = { ...post.reactions }
+  for (const [kind, set] of Object.entries(extra)) {
+    const base = new Set(reactions[kind] ?? [])
+    for (const [uid, on] of set) { if (on) base.add(uid); else base.delete(uid) }
+    reactions[kind] = [...base]
+  }
+  return { ...post, reactions }
+}
+
+function fallbackFeed() {
+  const samples = SAMPLE_FEED.map((p) => ({
+    id: `local-${p.ref}`,
+    user_id: sampleId(p.user),
+    quest_ref: p.ref,
+    quest_title: p.title,
+    quest_type: p.type,
+    category: p.category,
+    proof_url: p.proof,
+    completion_tag: p.tag ?? null,
+    duration_seconds: p.duration,
+    party: p.party ? p.party.map((n) => ({ id: sampleId(n), name: n })) : null,
+    reactions: Object.fromEntries(Object.entries(p.reactions).map(([k, names]) => [k, names.map(sampleId)])),
+    created_at: new Date(SEEDED_AT - p.ago * 60_000).toISOString(),
+  }))
+  return [...localPosts, ...samples].map(withLocalReactions).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+}
+
+function fallbackNotifications(me) {
+  return [
+    { id: 'local-n1', user_id: me, actor_id: sampleId('Moonbeam'), type: 'reaction', payload: { kind: 'hype', quest_title: 'Mood Doodle' }, created_at: new Date(SEEDED_AT - 6 * 60_000).toISOString() },
+    { id: 'local-n2', user_id: me, actor_id: sampleId('Pixel'), type: 'group_tag', payload: { quest_title: 'Campus Coffee Run', tag: 'together' }, created_at: new Date(SEEDED_AT - 25 * 60_000).toISOString() },
+  ].map((n) => ({ ...n, read: localRead.has(n.id) }))
+}
 const uniq = (xs) => [...new Set(xs)]
 
 /* ---------- avatar encoding ---------- */
@@ -114,7 +185,13 @@ export async function loadSocial(me) {
   const botIds = new Set(bots.map((b) => b.id))
   const profiles = [...bots, ...(await db.select('profiles', { in: { id: ids.filter((id) => !botIds.has(id)) } }))]
 
-  return { friendships, party, members, lobbies, lobbyMembers, profiles, feed, notifications }
+  // Demo-fallback mode: make the sample authors resolvable so demo posts/notifications render.
+  if (offline.feed || offline.notifications) {
+    const have = new Set(profiles.map((p) => p.id))
+    profiles.push(...fallbackProfiles().filter((p) => !have.has(p.id)))
+  }
+
+  return { friendships, party, members, lobbies, lobbyMembers, profiles, feed, notifications, offline: offlineTables() }
 }
 
 /* ---------- parties ---------- */
@@ -250,8 +327,8 @@ export async function resetToLobby(partyId, leaderId) {
  * Shares a completed quest. `ref` (the local quest id) makes posting idempotent per user.
  * post: { ref, title, type: 'daily'|'random'|'group', category, proofUrl, tag, durationSeconds, party }
  */
-export function postToFeed(userId, post) {
-  return db.insertIgnore('quest_feed', {
+export async function postToFeed(userId, post) {
+  const row = {
     user_id: userId,
     quest_ref: post.ref,
     quest_title: post.title,
@@ -262,19 +339,63 @@ export function postToFeed(userId, post) {
     duration_seconds: post.durationSeconds ?? null,
     party: post.party ?? null,
     reactions: {},
-  }, 'user_id,quest_ref')
+  }
+  try {
+    return await db.insertIgnore('quest_feed', row, 'user_id,quest_ref')
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('feed', e)
+    if (localPosts.some((p) => p.user_id === userId && p.quest_ref === row.quest_ref)) return []
+    const local = { ...row, id: `local-own-${Date.now()}`, created_at: new Date().toISOString() }
+    localPosts.unshift(local)
+    return [local]
+  }
 }
 
-/** Latest posts from the given authors, newest first. */
-export const loadFeed = (authorIds, limit = 30) =>
-  authorIds.length
-    ? db.select('quest_feed', { in: { user_id: authorIds }, order: ['created_at', { ascending: false }], limit })
-    : Promise.resolve([])
+/** Latest posts from the given authors, newest first (demo posts if quest_feed is missing). */
+export async function loadFeed(authorIds, limit = 30) {
+  if (!authorIds.length) return []
+  try {
+    const rows = await db.select('quest_feed', { in: { user_id: authorIds }, order: ['created_at', { ascending: false }], limit })
+    offline.feed = false
+    return rows
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('feed', e)
+    return fallbackFeed().slice(0, limit)
+  }
+}
 
-export const toggleReaction = (postId, userId, kind) => db.toggleReaction(postId, userId, kind)
+export async function toggleReaction(postId, userId, kind) {
+  const toggleLocal = () => {
+    const entry = localReactions.get(postId) ?? {}
+    const set = entry[kind] ?? new Map()
+    const current = fallbackFeed().find((p) => p.id === postId)?.reactions?.[kind]?.includes(userId)
+    set.set(userId, !current)
+    localReactions.set(postId, { ...entry, [kind]: set })
+  }
+  if (String(postId).startsWith('local-')) return toggleLocal()
+  try {
+    await db.toggleReaction(postId, userId, kind)
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('feed', e)
+    toggleLocal()
+  }
+}
 
 /** Makes sure the sample users exist and have a few posts, so the feed isn't empty on first load. */
 export async function seedSampleFeed() {
+  try {
+    return await seedSampleFeedRows()
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('feed', e)
+    return 0
+  }
+}
+
+async function seedSampleFeedRows() {
   await seedSampleUsers()
   const users = await db.select('profiles', { in: { username: SAMPLE_USERS.map((u) => u.username) } })
   const idOf = Object.fromEntries(users.map((u) => [u.username, u.id]))
@@ -296,9 +417,16 @@ export async function seedSampleFeed() {
   return (await db.insertIgnore('quest_feed', rows, 'user_id,quest_ref')).length
 }
 
-/** All of one adventurer's posts, for their profile grid. */
-export const loadUserPosts = (userId, limit = 60) =>
-  db.select('quest_feed', { eq: { user_id: userId }, order: ['created_at', { ascending: false }], limit })
+/** All of one adventurer's posts, for their profile grid (demo posts if quest_feed is missing). */
+export async function loadUserPosts(userId, limit = 60) {
+  try {
+    return await db.select('quest_feed', { eq: { user_id: userId }, order: ['created_at', { ascending: false }], limit })
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('feed', e)
+    return fallbackFeed().filter((p) => p.user_id === userId).slice(0, limit)
+  }
+}
 
 /* ---------- notifications ---------- */
 
@@ -306,21 +434,59 @@ export const loadUserPosts = (userId, limit = 60) =>
  * type: 'reaction' | 'group_tag' | 'friend_request' | 'friend_accepted' | 'party_invite'
  * payload examples: { kind, quest_title, post_id } · { quest_title } · { friendship_id } · { party_id }
  */
-export function notify(userId, actorId, type, payload = {}) {
-  if (!userId || userId === actorId) return Promise.resolve()
-  return db.insert('notifications', { user_id: userId, actor_id: actorId, type, payload, read: false })
+export async function notify(userId, actorId, type, payload = {}) {
+  if (!userId || userId === actorId || String(userId).startsWith('sample-') || String(actorId).startsWith('sample-')) return null
+  try {
+    return await db.insert('notifications', { user_id: userId, actor_id: actorId, type, payload, read: false })
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('notifications', e)
+    return null
+  }
 }
 
-export const loadNotifications = (me) =>
-  db.select('notifications', { eq: { user_id: me }, order: ['created_at', { ascending: false }], limit: 40 })
+export async function loadNotifications(me) {
+  try {
+    const rows = await db.select('notifications', { eq: { user_id: me }, order: ['created_at', { ascending: false }], limit: 40 })
+    offline.notifications = false
+    return rows
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('notifications', e)
+    return fallbackNotifications(me)
+  }
+}
 
-export const markAllNotificationsRead = (me) => db.update('notifications', { read: true }, { eq: { user_id: me, read: false } })
+export async function markAllNotificationsRead(me) {
+  if (offline.notifications) {
+    fallbackNotifications(me).forEach((n) => localRead.add(n.id))
+    return
+  }
+  try {
+    await db.update('notifications', { read: true }, { eq: { user_id: me, read: false } })
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('notifications', e)
+    fallbackNotifications(me).forEach((n) => localRead.add(n.id))
+  }
+}
 
 /**
  * First-run sample inbox: a reaction, a "Done Together" tag, a real friend request you can accept,
  * and a party invite into a sample lobby you can join.
  */
 export async function seedSampleNotifications(me) {
+  if (offline.notifications) return 0
+  try {
+    return await seedSampleNotificationRows(me)
+  } catch (e) {
+    if (!isMissingTable(e)) throw e
+    goOffline('notifications', e)
+    return 0
+  }
+}
+
+async function seedSampleNotificationRows(me) {
   if ((await db.select('notifications', { eq: { user_id: me }, limit: 1 })).length) return 0
   await seedSampleUsers()
   const users = await db.select('profiles', { in: { username: ['Moonbeam', 'Pixel', 'Juniper', 'Bolt'] } })

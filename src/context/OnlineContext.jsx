@@ -489,6 +489,8 @@ export function OnlineProvider({ children }) {
       lobbies: d?.lobbies ?? [],
       leaderboard,
       feed,
+      /** { feed, notifications }: true when that Supabase table is missing and demo data is shown */
+      offline: raw?.offline ?? {},
       enrichPost,
       notifications,
       unreadCount: notifications.filter((n) => !n.read).length,

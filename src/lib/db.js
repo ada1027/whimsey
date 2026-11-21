@@ -21,13 +21,48 @@ function applyFilter(q, f = {}) {
   return q
 }
 
-function check({ data, error }) {
+function check({ data, error, status }) {
   if (error) {
     const e = new Error(error.message)
     e.code = error.code
+    e.status = status ?? error.status ?? error.statusCode
     throw e
   }
   return data
+}
+
+/**
+ * One shared Realtime channel for the whole app.
+ * - Created lazily with a unique topic each time (so callbacks are always registered before subscribe()).
+ * - Fans every change out to all current listeners.
+ * - Removed with supabase.removeChannel() when the last listener unsubscribes (e.g. on unmount / StrictMode).
+ */
+const realtimeHub = {
+  channel: null,
+  listeners: new Set(),
+  seq: 0,
+  add(listener) {
+    this.listeners.add(listener)
+    if (!this.channel) {
+      const channel = supabase.channel(`whimsey-db-${++this.seq}-${Date.now()}`)
+      for (const table of TABLES) {
+        channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+          for (const fn of [...this.listeners]) {
+            try { fn(table) } catch (e) { console.error('[whimsey] realtime listener failed', e) }
+          }
+        })
+      }
+      channel.subscribe()
+      this.channel = channel
+    }
+    return () => {
+      this.listeners.delete(listener)
+      if (this.listeners.size === 0 && this.channel) {
+        supabase.removeChannel(this.channel)
+        this.channel = null
+      }
+    }
+  },
 }
 
 const supabaseAdapter = {
@@ -64,14 +99,13 @@ const supabaseAdapter = {
     check(await supabase.storage.from(PROOF_BUCKET).upload(path, file, { upsert: true, contentType: file.type }))
     return supabase.storage.from(PROOF_BUCKET).getPublicUrl(path).data.publicUrl
   },
-  /** Calls onChange(table) whenever any row in our tables changes, on any device. */
+  /**
+   * Calls onChange(table) whenever any row in our tables changes, on any device.
+   * All subscribers share ONE Realtime channel (see realtimeHub below), so we never add
+   * postgres_changes callbacks to a channel that has already called subscribe().
+   */
   subscribe(onChange) {
-    const channel = supabase.channel('whimsey-db')
-    for (const table of TABLES) {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => onChange(table))
-    }
-    channel.subscribe()
-    return () => supabase.removeChannel(channel)
+    return realtimeHub.add(onChange)
   },
 }
 

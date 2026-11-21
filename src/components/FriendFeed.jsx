@@ -127,13 +127,18 @@ export function FeedPost({ post, now, profilesById, onReact, onOpenProfile }) {
 
 /** Strava/BeReal-style feed of friends' completed quests with proof + reactions. */
 export default function FriendFeed({ limit = 10, title = 'Friend activity', action }) {
-  const { feed, loaded, profilesById, toggleReaction, openProfile } = useOnline()
+  const { feed, loaded, profilesById, toggleReaction, openProfile, offline } = useOnline()
   const now = useNow(30_000)
   const posts = feed.slice(0, limit)
 
   return (
     <section aria-label={title}>
       <SectionTitle icon={Activity} tone="pink" action={action}>{title}</SectionTitle>
+      {offline.feed && (
+        <p className="mb-3 rounded-xl border-[3px] border-dashed border-gold bg-gold/15 p-2 text-xs font-bold text-muted">
+          Demo feed: the <code>quest_feed</code> table isn&apos;t in Supabase yet. Run <b>supabase_schema.sql</b> in the SQL Editor to turn on live posts.
+        </p>
+      )}
       {!loaded ? (
         <p className="py-6 text-center font-bold text-muted">Loading feed…</p>
       ) : posts.length === 0 ? (

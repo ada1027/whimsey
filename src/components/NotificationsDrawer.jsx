@@ -63,7 +63,7 @@ function Actions({ n, onJoined }) {
 
 /** Bell inbox: kudos, group tags, friend requests (Accept / Decline) and party invites (Join). */
 export default function NotificationsDrawer({ onClose, onNavigate }) {
-  const { notifications, markNotificationsRead, openProfile } = useOnline()
+  const { notifications, markNotificationsRead, openProfile, offline } = useOnline()
   const now = useNow(30_000)
   // Remember what was unread when the drawer opened, so highlights stay while you read.
   const [freshIds] = useState(() => new Set(notifications.filter((n) => !n.read).map((n) => n.id)))
@@ -76,6 +76,11 @@ export default function NotificationsDrawer({ onClose, onNavigate }) {
 
   return (
     <Modal onClose={onClose} title="Notifications" eyebrow={freshIds.size ? `${freshIds.size} new` : 'All caught up'}>
+      {offline.notifications && (
+        <p className="mb-3 rounded-xl border-[3px] border-dashed border-gold bg-gold/15 p-2 text-xs font-bold text-muted">
+          Demo inbox: run <b>supabase_schema.sql</b> in Supabase to enable live notifications.
+        </p>
+      )}
       {notifications.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-8 text-center text-muted">
           <Bell size={32} />
