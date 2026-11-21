@@ -458,3 +458,27 @@ export default function Character({ look, crop = 'full', mood = 'happy', classNa
     </svg>
   )
 }
+
+// Framing for each accessory drawn on its own (no bird) — used as Locker item icons.
+const ACCESSORY_VIEW = {
+  headphones: '32 8 136 106',
+  sprout: '92 2 54 58',
+  glasses: '58 72 84 44',
+  scarf: '42 108 116 58',
+  gradscarf: '42 108 116 58',
+  wizard: '52 -14 96 76',
+  bow: '102 34 56 40',
+  crown: '62 10 76 48',
+  rainhat: '32 8 136 88',
+  umbrella: '74 -46 168 196',
+}
+
+/** Clean, bird-free icon for an accessory. */
+export function AccessoryIcon({ kind, className = '' }) {
+  if (!ACCESSORY_VIEW[kind]) return null
+  return (
+    <svg viewBox={ACCESSORY_VIEW[kind]} className={className} aria-hidden>
+      <Accessory kind={kind} stage="fledgling" />
+    </svg>
+  )
+}
