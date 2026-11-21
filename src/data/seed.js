@@ -125,13 +125,14 @@ export const SAMPLE_FEED = [
 
 export const SLOTS = [
   { id: 'colorway', label: 'Colorway' },
+  { id: 'outfit', label: 'Outfit' },
   { id: 'accessory', label: 'Accessory' },
   { id: 'title', label: 'Title' },
 ]
 
 // unlock: { level } is earned automatically, { coins } is bought in the shop.
 export const ITEMS = [
-  { id: 'cw-classic', slot: 'colorway', name: 'Classic Navy & Gold', value: 'classic' },
+  { id: 'cw-classic', slot: 'colorway', name: 'UBC Blue & Gold', value: 'classic' },
   { id: 'cw-sky', slot: 'colorway', name: 'Pastel Sky', value: 'sky' },
   { id: 'cw-sakura', slot: 'colorway', name: 'Sakura Pink', value: 'sakura' },
   { id: 'cw-mint', slot: 'colorway', name: 'Mint Sprout', value: 'mint' },
@@ -140,7 +141,14 @@ export const ITEMS = [
   { id: 'cw-galaxy', slot: 'colorway', name: 'Galaxy', value: 'galaxy', unlock: { level: 4 } },
   { id: 'cw-storm', slot: 'colorway', name: 'Storm Gold', value: 'storm', unlock: { level: 6 } },
 
+  { id: 'out-none', slot: 'outfit', name: 'None', value: 'none' },
+  { id: 'out-jersey', slot: 'outfit', name: 'UBC #1 Jersey', value: 'jersey' },
+  { id: 'out-hoodie', slot: 'outfit', name: 'Engineering Hoodie', value: 'hoodie', unlock: { coins: 35 } },
+
   { id: 'acc-none', slot: 'accessory', name: 'None', value: 'none' },
+  { id: 'acc-umbrella', slot: 'accessory', name: 'Raincouver Umbrella', value: 'umbrella' },
+  { id: 'acc-gradscarf', slot: 'accessory', name: 'Grad Scarf', value: 'gradscarf', unlock: { level: 2 } },
+  { id: 'acc-rainhat', slot: 'accessory', name: 'Rain Hat', value: 'rainhat', unlock: { coins: 20 } },
   { id: 'acc-headphones', slot: 'accessory', name: 'Tiny Headphones', value: 'headphones' },
   { id: 'acc-sprout', slot: 'accessory', name: 'Sprout Leaf', value: 'sprout' },
   { id: 'acc-glasses', slot: 'accessory', name: 'Round Glasses', value: 'glasses' },
@@ -167,10 +175,10 @@ export const isOwned = (item, profile) =>
 /** Turn equipped item ids into the companion look (add `level` for the evolution stage). */
 export function resolveLook(equipped, level = 1) {
   const v = (slot) => ITEM_BY_ID[equipped?.[slot]]?.value
-  return { colorway: v('colorway') ?? 'classic', accessory: v('accessory') ?? 'none', level }
+  return { colorway: v('colorway') ?? 'classic', accessory: v('accessory') ?? 'none', outfit: v('outfit') ?? 'none', level }
 }
 
-export const DEFAULT_EQUIPPED = { colorway: 'cw-classic', accessory: 'acc-none', title: 'title-rookie' }
+export const DEFAULT_EQUIPPED = { colorway: 'cw-classic', outfit: 'out-none', accessory: 'acc-none', title: 'title-rookie' }
 
 /* ---------- Social / multiplayer ---------- */
 
@@ -193,12 +201,12 @@ export const GROUP_QUESTS = [
 export const SAMPLE_USERS = [
   { username: 'Pixel', level: 7, xp: 120, coins: 210, streak: 12, look: { colorway: 'mint', accessory: 'headphones' }, companion: 'Bloop' },
   { username: 'Moonbeam', level: 5, xp: 80, coins: 150, streak: 6, look: { colorway: 'grape', accessory: 'wizard' }, companion: 'Nimbus' },
-  { username: 'Bolt', level: 4, xp: 60, coins: 95, streak: 3, look: { colorway: 'classic', accessory: 'scarf' }, companion: 'Zapper' },
+  { username: 'Bolt', level: 4, xp: 60, coins: 95, streak: 3, look: { colorway: 'classic', accessory: 'gradscarf', outfit: 'jersey' }, companion: 'Zapper' },
   { username: 'Inky', level: 2, xp: 40, coins: 30, streak: 1, look: { colorway: 'sakura', accessory: 'glasses' }, companion: 'Mochi' },
   { username: 'Sprout', level: 3, xp: 10, coins: 55, streak: 4, look: { colorway: 'mint', accessory: 'sprout' }, companion: 'Pip' },
-  { username: 'Nova', level: 6, xp: 150, coins: 180, streak: 9, look: { colorway: 'storm', accessory: 'crown' }, companion: 'Blaze' },
-  { username: 'Juniper', level: 4, xp: 20, coins: 70, streak: 2, look: { colorway: 'sky', accessory: 'bow' }, companion: 'Puff' },
-  { username: 'Taco', level: 5, xp: 30, coins: 120, streak: 5, look: { colorway: 'sunset', accessory: 'none' }, companion: 'Nacho' },
+  { username: 'Nova', level: 6, xp: 150, coins: 180, streak: 9, look: { colorway: 'storm', accessory: 'crown', outfit: 'hoodie' }, companion: 'Blaze' },
+  { username: 'Juniper', level: 4, xp: 20, coins: 70, streak: 2, look: { colorway: 'sky', accessory: 'rainhat', outfit: 'none' }, companion: 'Puff' },
+  { username: 'Taco', level: 5, xp: 30, coins: 120, streak: 5, look: { colorway: 'sunset', accessory: 'umbrella', outfit: 'none' }, companion: 'Nacho' },
 ]
 
 /** Names for extra simulated teammates when the sample bots are busy. */

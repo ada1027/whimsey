@@ -2,6 +2,7 @@
 // Evolves with level: Lv 1–2 Hatchling (thunder-egg) · Lv 3–4 Fledgling · Lv 5+ Stormbird (wings + lightning).
 // look: { colorway, accessory, outfit, level } — older looks are normalized automatically.
 
+import { useId } from 'react'
 import { COLORWAYS, normalizeLook, stageFor } from '../data/companion.js'
 
 const O = '#1d2457' // soft navy outline
@@ -86,15 +87,126 @@ function Foot({ x, y, c }) {
 
 // Where gear sits on each stage (scaled to the round chibi bodies).
 const ANCHOR = {
-  hatchling: { top: 58, eyeY: 93, dx: 16, hw: 44, neckY: 128, neckW: 48, chest: { cx: 100, cy: 156, w: 64, h: 30 } },
-  fledgling: { top: 44, eyeY: 94, dx: 20, hw: 55, neckY: 128, neckW: 50, chest: { cx: 100, cy: 154, w: 52, h: 34 } },
-  stormbird: { top: 38, eyeY: 88, dx: 21, hw: 59, neckY: 124, neckW: 55, chest: { cx: 100, cy: 152, w: 58, h: 38 } },
+  hatchling: { top: 58, eyeY: 93, dx: 16, hw: 44, neckY: 128, neckW: 48 },
+  fledgling: { top: 44, eyeY: 94, dx: 20, hw: 55, neckY: 128, neckW: 50 },
+  stormbird: { top: 38, eyeY: 88, dx: 21, hw: 59, neckY: 124, neckW: 55 },
 }
 
-function Hatchling({ c, mood, outfit }) {
+// Body outlines, shared by the body fill/outline and the outfit clip (so garments sit flush with the edge).
+const SHELL = 'M40 128 L54 116 L66 128 L80 115 L93 128 L107 115 L120 128 L134 115 L146 128 L160 117 C164 160 136 186 100 186 C64 186 36 160 40 128 Z'
+const BODY = {
+  fledgling: 'M100 42 C146 42 158 84 156 120 C154 160 132 184 100 184 C68 184 46 160 44 120 C42 84 54 42 100 42 Z',
+  stormbird: 'M100 36 C150 36 162 80 160 120 C158 164 134 188 100 188 C66 188 42 164 40 120 C38 80 50 36 100 36 Z',
+}
+
+// Garment geometry per stage: neckline dip, strap tops/x-ranges, armhole height at the body edge, emblem spot.
+const GARMENT = {
+  fledgling: { neck: 130, strapTop: 117, strapL: [73, 86], strapR: [114, 127], arm: 148, emblemY: 162, emblem: 26 },
+  stormbird: { neck: 126, strapTop: 113, strapL: [71, 85], strapR: [115, 129], arm: 144, emblemY: 162, emblem: 30 },
+}
+
+const HOODIE = { main: '#e8414f', dark: '#b82a3a', light: '#ff6b78' }
+
+/** Gold gear emblem (Engineering). */
+function Gear({ x, y, r }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      {Array.from({ length: 8 }, (_, i) => (
+        <rect key={i} x={-r * 0.22} y={-r * 1.32} width={r * 0.44} height={r * 0.6} rx={r * 0.1} fill="#ffcb3d" stroke={O} strokeWidth={1.6} transform={`rotate(${i * 45})`} />
+      ))}
+      <circle r={r} fill="#ffcb3d" stroke={O} strokeWidth={2} />
+      <circle r={r * 0.42} fill={HOODIE.main} stroke={O} strokeWidth={1.6} />
+    </g>
+  )
+}
+
+/** Chunky blue "1" with a gold outline. */
+function JerseyNumber({ x, y, size }) {
+  return (
+    <text x={x} y={y} textAnchor="middle" fontFamily="Lilita One, sans-serif" fontSize={size}
+      fill="#2f5fd0" stroke="#ffcb3d" strokeWidth={size * 0.12} paintOrder="stroke" strokeLinejoin="round">1</text>
+  )
+}
+
+/** Tank top / hoodie covering the whole torso, clipped to the body outline. */
+function Garment({ kind, stage, clipId }) {
+  const g = GARMENT[stage]
+  const [l1, l2] = g.strapL
+  const [r1, r2] = g.strapR
+  if (kind === 'jersey') {
+    // armhole → strap → neckline scoop → strap → armhole
+    const edge = `M20 ${g.arm} Q${l1 - 12} ${g.arm} ${l1} ${g.strapTop + 12} L${l1 + 1} ${g.strapTop} L${l2} ${g.strapTop} Q${l2 + 4} ${g.neck - 2} 100 ${g.neck} Q${r1 - 4} ${g.neck - 2} ${r1} ${g.strapTop} L${r2 - 1} ${g.strapTop} L${r2} ${g.strapTop + 12} Q${r2 + 12} ${g.arm} 180 ${g.arm}`
+    return (
+      <g clipPath={`url(#${clipId})`}>
+        <path d={`${edge} L180 210 L20 210 Z`} fill="#ffffff" />
+        {/* royal blue + gold trim around collar and armholes */}
+        <path d={edge} fill="none" stroke="#2f5fd0" strokeWidth={6} strokeLinejoin="round" />
+        <path d={edge} fill="none" stroke="#ffcb3d" strokeWidth={2} strokeLinejoin="round" transform="translate(0 3.5)" />
+        <path d={`M20 ${g.emblemY + 18} L180 ${g.emblemY + 18}`} stroke="#2f5fd0" strokeWidth={4} opacity={0.9} />
+        <JerseyNumber x={100} y={g.emblemY + 8} size={g.emblem} />
+      </g>
+    )
+  }
+  if (kind === 'hoodie') {
+    const top = g.neck - 8
+    return (
+      <>
+        <g clipPath={`url(#${clipId})`}>
+          <path d={`M20 ${top + 6} Q100 ${top - 8} 180 ${top + 6} L180 210 L20 210 Z`} fill={HOODIE.main} />
+          {/* kangaroo pocket + side shading */}
+          <path d={`M74 ${g.emblemY + 6} Q100 ${g.emblemY + 1} 126 ${g.emblemY + 6} L132 ${g.emblemY + 26} Q100 ${g.emblemY + 30} 68 ${g.emblemY + 26} Z`} fill={HOODIE.dark} stroke={O} strokeWidth={2.4} strokeLinejoin="round" />
+          <path d={`M30 ${top + 20} Q44 ${top + 50} 40 ${top + 70} M170 ${top + 20} Q156 ${top + 50} 160 ${top + 70}`} fill="none" stroke={HOODIE.dark} strokeWidth={6} opacity={0.6} />
+          <Gear x={100} y={g.emblemY - 10} r={6} />
+        </g>
+        {/* cozy hood collar wrapping the neck */}
+        <path d={`M${l1 - 22} ${top + 2} Q100 ${top + 26} ${r2 + 22} ${top + 2}`} fill="none" stroke={O} strokeWidth={15} strokeLinecap="round" />
+        <path d={`M${l1 - 22} ${top + 2} Q100 ${top + 26} ${r2 + 22} ${top + 2}`} fill="none" stroke={HOODIE.main} strokeWidth={9} strokeLinecap="round" />
+        <path d={`M${l1 - 18} ${top} Q100 ${top + 21} ${r2 + 18} ${top}`} fill="none" stroke={HOODIE.light} strokeWidth={2.5} strokeLinecap="round" />
+        {/* drawstrings */}
+        {[-7, 7].map((dx) => (
+          <g key={dx}>
+            <path d={`M${100 + dx} ${top + 15} L${100 + dx * 1.15} ${top + 32}`} stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+            <circle cx={100 + dx * 1.15} cy={top + 34} r={2.2} fill="#fff" stroke={O} strokeWidth={1.2} />
+          </g>
+        ))}
+      </>
+    )
+  }
+  return null
+}
+
+/** Egg stage: the outfit becomes a cozy band around the lower shell. */
+function ShellBand({ kind, clipId }) {
+  if (kind === 'jersey') {
+    return (
+      <g clipPath={`url(#${clipId})`}>
+        <rect x={20} y={140} width={160} height={30} fill="#ffffff" />
+        {[140, 167].map((y) => <rect key={y} x={20} y={y} width={160} height={4} fill="#2f5fd0" />)}
+        {[145, 165].map((y) => <rect key={y} x={20} y={y} width={160} height={1.6} fill="#ffcb3d" />)}
+        <JerseyNumber x={100} y={164} size={22} />
+      </g>
+    )
+  }
+  if (kind === 'hoodie') {
+    return (
+      <g clipPath={`url(#${clipId})`}>
+        <rect x={20} y={138} width={160} height={34} fill={HOODIE.main} />
+        {Array.from({ length: 22 }, (_, i) => <path key={i} d={`M${24 + i * 7.5} 140 L${24 + i * 7.5} 170`} stroke={HOODIE.dark} strokeWidth={2} opacity={0.55} />)}
+        <rect x={20} y={138} width={160} height={4} fill={HOODIE.dark} />
+        <rect x={20} y={168} width={160} height={4} fill={HOODIE.dark} />
+        <Gear x={100} y={155} r={6} />
+      </g>
+    )
+  }
+  return null
+}
+
+function Hatchling({ c, mood, outfit, clipId }) {
   const up = mood === 'cheer'
+  const dressed = outfit !== 'none'
   return (
     <>
+      <defs><clipPath id={clipId}><path d={SHELL} /></clipPath></defs>
       {/* chick peeking out, crest escaping from under the shell */}
       <Crest cx={130} y={68} s={0.85} rot={34} c={c} />
       <circle cx={100} cy={100} r={44} fill={c.body} stroke={O} strokeWidth={SW} />
@@ -102,13 +214,11 @@ function Hatchling({ c, mood, outfit }) {
       <Eyes y={93} dx={16} r={9.5} mood={mood} />
       <Beak y={104} w={14} c={c} />
       <Cheeks y={107} dx={30} />
-      {/* lower shell */}
-      <path
-        d="M40 128 L54 116 L66 128 L80 115 L93 128 L107 115 L120 128 L134 115 L146 128 L160 117 C164 160 136 186 100 186 C64 186 36 160 40 128 Z"
-        fill={c.dark} stroke={O} strokeWidth={SW} strokeLinejoin="round"
-      />
-      <path d="M48 152 L62 142 L76 154 L90 142 L100 152 L112 142 L126 154 L140 142 L152 152" fill="none" stroke={c.accent} strokeWidth={5.5} strokeLinejoin="round" strokeLinecap="round" />
-      <Outfit kind={outfit} stage="hatchling" />
+      {/* lower shell (+ cozy outfit band) */}
+      <path d={SHELL} fill={c.dark} />
+      {!dressed && <path d="M48 152 L62 142 L76 154 L90 142 L100 152 L112 142 L126 154 L140 142 L152 152" fill="none" stroke={c.accent} strokeWidth={5.5} strokeLinejoin="round" strokeLinecap="round" />}
+      <ShellBand kind={outfit} clipId={clipId} />
+      <path d={SHELL} fill="none" stroke={O} strokeWidth={SW} strokeLinejoin="round" />
       {/* lifted top shell */}
       <g transform={`translate(-4 ${up ? -18 : -10}) rotate(${up ? -24 : -16} 100 60)`}>
         <path
@@ -122,30 +232,42 @@ function Hatchling({ c, mood, outfit }) {
   )
 }
 
-/** Soft rounded side wing (left; mirror for right). */
-function SoftWing({ c, up }) {
+/** Soft rounded side wing (left; mirror for right). With the hoodie it becomes a cozy sleeve. */
+function SoftWing({ c, up, sleeve }) {
   return (
     <g transform={up ? 'rotate(48 52 114)' : undefined}>
-      <path d="M52 110 C32 116 24 144 36 164 C44 158 52 152 57 142 C60 130 58 116 52 110 Z" fill={c.dark} stroke={O} strokeWidth={SW} strokeLinejoin="round" />
-      <path d="M45 124 C38 134 36 146 39 156" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" opacity={0.35} />
+      <path d="M52 110 C32 116 24 144 36 164 C44 158 52 152 57 142 C60 130 58 116 52 110 Z" fill={sleeve ? HOODIE.main : c.dark} stroke={O} strokeWidth={SW} strokeLinejoin="round" />
+      {sleeve
+        ? <path d="M33 154 Q40 150 48 154" fill="none" stroke={HOODIE.dark} strokeWidth={5} strokeLinecap="round" />
+        : <path d="M45 124 C38 134 36 146 39 156" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" opacity={0.35} />}
     </g>
   )
 }
 
-function Fledgling({ c, mood, outfit }) {
+function Fledgling({ c, mood, outfit, clipId }) {
   const up = mood === 'cheer'
+  const dressed = outfit !== 'none'
+  const wings = (
+    <>
+      <SoftWing c={c} up={up} sleeve={outfit === 'hoodie'} />
+      <g transform="translate(200 0) scale(-1 1)"><SoftWing c={c} up={up} sleeve={outfit === 'hoodie'} /></g>
+    </>
+  )
   return (
     <>
+      <defs><clipPath id={clipId}><path d={BODY.fledgling} /></clipPath></defs>
       <Foot x={84} y={186} c={c} />
       <Foot x={116} y={186} c={c} />
       <Crest y={46} s={0.95} c={c} />
-      <SoftWing c={c} up={up} />
-      <g transform="translate(200 0) scale(-1 1)"><SoftWing c={c} up={up} /></g>
+      {!dressed && wings}
       {/* one round chibi body */}
-      <path d="M100 42 C146 42 158 84 156 120 C154 160 132 184 100 184 C68 184 46 160 44 120 C42 84 54 42 100 42 Z" fill={c.body} stroke={O} strokeWidth={SW} />
+      <path d={BODY.fledgling} fill={c.body} />
       <ellipse cx={100} cy={152} rx={34} ry={27} fill={c.belly} />
       <path d="M66 74 Q74 58 90 54" fill="none" stroke="#fff" strokeWidth={5} strokeLinecap="round" opacity={0.4} />
-      <Outfit kind={outfit} stage="fledgling" />
+      <Garment kind={outfit} stage="fledgling" clipId={clipId} />
+      <path d={BODY.fledgling} fill="none" stroke={O} strokeWidth={SW} />
+      {/* dressed: the garment tucks under the wings */}
+      {dressed && wings}
       <Eyes y={94} dx={20} r={11.5} mood={mood} />
       <Beak y={106} w={17} c={c} />
       <Cheeks y={110} dx={37} />
@@ -166,10 +288,11 @@ function BigWing({ c, up }) {
   )
 }
 
-function Stormbird({ c, mood, outfit }) {
+function Stormbird({ c, mood, outfit, clipId }) {
   const up = mood === 'cheer'
   return (
     <>
+      <defs><clipPath id={clipId}><path d={BODY.stormbird} /></clipPath></defs>
       {/* lightning aura */}
       <g className="animate-pulse">
         <Bolt x={20} y={130} s={0.75} fill={c.accent} />
@@ -182,53 +305,17 @@ function Stormbird({ c, mood, outfit }) {
       <Foot x={84} y={190} c={c} />
       <Foot x={116} y={190} c={c} />
       <Crest y={40} s={1.15} c={c} glow />
-      <path d="M100 36 C150 36 162 80 160 120 C158 164 134 188 100 188 C66 188 42 164 40 120 C38 80 50 36 100 36 Z" fill={c.body} stroke={O} strokeWidth={SW} />
+      <path d={BODY.stormbird} fill={c.body} />
       <ellipse cx={100} cy={152} rx={38} ry={30} fill={c.belly} />
-      <path d="M90 134 L100 142 L110 134" fill="none" stroke={c.accent} strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />
+      {outfit === 'none' && <path d="M90 134 L100 142 L110 134" fill="none" stroke={c.accent} strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" />}
       <path d="M64 70 Q72 52 90 48" fill="none" stroke="#fff" strokeWidth={5} strokeLinecap="round" opacity={0.4} />
-      <Outfit kind={outfit} stage="stormbird" />
+      <Garment kind={outfit} stage="stormbird" clipId={clipId} />
+      <path d={BODY.stormbird} fill="none" stroke={O} strokeWidth={SW} />
       <Eyes y={88} dx={21} r={12} mood={mood} />
       <Beak y={101} w={18} c={c} />
       <Cheeks y={105} dx={39} />
     </>
   )
-}
-
-/* ---------------- outfits (chest) ---------------- */
-
-function Outfit({ kind, stage }) {
-  const { cx, cy, w, h } = ANCHOR[stage].chest
-  const x = cx - w / 2
-  const y = cy - h / 2
-  switch (kind) {
-    case 'jersey':
-      return (
-        <g>
-          <path
-            d={`M${x + 6} ${y} L${x + w * 0.3} ${y} Q${cx} ${y + h * 0.3} ${x + w * 0.7} ${y} L${x + w - 6} ${y} Q${x + w + 2} ${y + h * 0.45} ${x + w - 3} ${y + h} Q${cx} ${y + h + 4} ${x + 3} ${y + h} Q${x - 2} ${y + h * 0.45} ${x + 6} ${y} Z`}
-            fill="#ffffff" stroke={O} strokeWidth={3} strokeLinejoin="round"
-          />
-          <path d={`M${x + w * 0.3} ${y} Q${cx} ${y + h * 0.3} ${x + w * 0.7} ${y}`} fill="none" stroke="#3f6fd8" strokeWidth={2.6} />
-          <text x={cx} y={y + h * 0.64} textAnchor="middle" fontFamily="Lilita One, sans-serif" fontSize={h * 0.34} fill="#3f6fd8">UBC</text>
-          <text x={cx} y={y + h * 0.97} textAnchor="middle" fontFamily="Lilita One, sans-serif" fontSize={h * 0.3} fill="#3f6fd8">1</text>
-        </g>
-      )
-    case 'hoodie':
-      return (
-        <g>
-          <path
-            d={`M${x - 2} ${y + 4} Q${cx} ${y - 6} ${x + w + 2} ${y + 4} Q${x + w + 4} ${y + h * 0.6} ${x + w - 3} ${y + h + 1} Q${cx} ${y + h + 6} ${x + 3} ${y + h + 1} Q${x - 4} ${y + h * 0.6} ${x - 2} ${y + 4} Z`}
-            fill="#e8414f" stroke={O} strokeWidth={3} strokeLinejoin="round"
-          />
-          <path d={`M${cx - w * 0.36} ${y + 2} Q${cx} ${y + h * 0.3} ${cx + w * 0.36} ${y + 2}`} fill="none" stroke="#b82a3a" strokeWidth={4.5} strokeLinecap="round" />
-          <path d={`M${cx - 6} ${y + h * 0.18} L${cx - 7} ${y + h * 0.42} M${cx + 6} ${y + h * 0.18} L${cx + 7} ${y + h * 0.42}`} stroke="#fff" strokeWidth={2} strokeLinecap="round" />
-          <rect x={cx - w * 0.28} y={y + h * 0.62} width={w * 0.56} height={h * 0.26} rx={5} fill="#b82a3a" stroke={O} strokeWidth={2.2} />
-          <circle cx={cx} cy={y + h * 0.48} r={h * 0.1} fill="none" stroke="#ffcb3d" strokeWidth={2.4} strokeDasharray="2.2 1.6" />
-        </g>
-      )
-    default:
-      return null
-  }
 }
 
 /* ---------------- accessories (head / neck) ---------------- */
@@ -353,11 +440,12 @@ export default function Character({ look, crop = 'full', mood = 'happy', classNa
   const c = COLORWAYS[l.colorway]
   const Body = { hatchling: Hatchling, fledgling: Fledgling, stormbird: Stormbird }[stage]
   const full = crop === 'full'
+  const clipId = `tb${useId().replace(/[^a-zA-Z0-9]/g, '')}` // unique per avatar on the page
 
   return (
     <svg viewBox={full ? VIEWBOX.full : VIEWBOX[stage]} className={className} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       {full && <ellipse cx={100} cy={196} rx={50} ry={6.5} fill="rgb(0 0 0 / .18)" />}
-      <Body c={c} mood={mood} outfit={l.outfit} />
+      <Body c={c} mood={mood} outfit={l.outfit} clipId={clipId} />
       {l.colorway === 'galaxy' && GALAXY[stage].map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill="#fff" opacity={0.85} />)}
       <Accessory kind={l.accessory} stage={stage} />
       {mood === 'cheer' && full && (

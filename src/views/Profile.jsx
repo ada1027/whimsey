@@ -1,4 +1,4 @@
-import { Check, Coins, Flame, Lock, Medal, Pencil, Save, Shirt, Sparkles, Tag, Target, Trophy } from 'lucide-react'
+import { Check, Coins, Flame, Lock, Medal, Pencil, Save, Shirt, Sparkles, Tag, Target, Trophy, Umbrella } from 'lucide-react'
 import { useState } from 'react'
 import Character from '../components/Character.jsx'
 import { ActivityGrid, PostDetail, useUserPosts } from '../components/Profiles.jsx'
@@ -10,7 +10,7 @@ import { STAGES, stageFor } from '../data/companion.js'
 import { ACTIVITY_TAGS, isOwned, ITEMS, resolveLook, SLOTS } from '../data/seed.js'
 import { encodeAvatar } from '../lib/api.js'
 
-const SLOT_ICONS = { colorway: Sparkles, accessory: Shirt, title: Tag }
+const SLOT_ICONS = { colorway: Sparkles, outfit: Shirt, accessory: Umbrella, title: Tag }
 const LINES = ['Let’s go questing!', '*happy chirp*', 'Zap zap! ⚡', 'Feed me XP!', 'You’re my favorite human.', 'Snack break?']
 const NEXT = { hatchling: { stage: 'fledgling', level: 3 }, fledgling: { stage: 'stormbird', level: 5 } }
 
@@ -163,13 +163,13 @@ function Customizer() {
       <SectionTitle icon={Sparkles} tone="pink" action={<Pill tone="dark" icon={Medal}>{ownedCount}/{ITEMS.length}</Pill>}>
         Customize
       </SectionTitle>
-      <div className="mb-4 grid grid-cols-3 gap-2" role="tablist">
+      <div className="mb-4 grid grid-cols-4 gap-1.5" role="tablist">
         {SLOTS.map(({ id, label }) => {
           const Icon = SLOT_ICONS[id]
           const active = slot === id
           return (
             <button key={id} role="tab" aria-selected={active} onClick={() => setSlot(id)}
-              className={`pill justify-center rounded-xl py-1.5 text-sm transition ${active ? 'bg-gold text-on-accent -translate-y-0.5' : 'bg-surface-2 text-muted shadow-none'}`}>
+              className={`pill flex-col justify-center gap-0.5 rounded-xl py-1.5 text-[11px] transition ${active ? 'bg-gold text-on-accent -translate-y-0.5' : 'bg-surface-2 text-muted shadow-none'}`}>
               <Icon size={15} strokeWidth={2.75} /> {label}
             </button>
           )
@@ -185,7 +185,11 @@ function Customizer() {
               <div className={`stage grid aspect-square w-full place-items-center overflow-hidden rounded-xl border-2 border-outline ${owned ? '' : 'opacity-50 grayscale'}`}>
                 {item.slot === 'title'
                   ? <span className="title-stroke px-1 text-center text-sm uppercase leading-tight">{item.name}</span>
-                  : <Character look={{ ...look, [item.slot]: item.value }} crop={item.slot === 'accessory' ? 'full' : 'head'} className="size-full" />}
+                  : <Character
+                      look={{ ...look, ...(item.slot === 'outfit' ? { accessory: 'none' } : {}), [item.slot]: item.value }}
+                      crop={item.slot === 'colorway' ? 'head' : 'full'}
+                      className="size-full"
+                    />}
               </div>
               <p className="mt-1 w-full truncate text-center text-[11px] font-extrabold">{item.name}</p>
               <span className="mt-1">

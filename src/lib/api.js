@@ -8,9 +8,9 @@ const uniq = (xs) => [...new Set(xs)]
 
 /* ---------- avatar encoding ---------- */
 
-/** profiles.avatar stores JSON: { look: { colorway, accessory }, equipped: { slot: itemId }, name: companion name } */
+/** profiles.avatar stores JSON: { look: { colorway, accessory, outfit }, equipped: { slot: itemId }, name: companion name } */
 export const encodeAvatar = (look, equipped, name) =>
-  JSON.stringify({ look: { colorway: look.colorway, accessory: look.accessory }, equipped, name })
+  JSON.stringify({ look: { colorway: look.colorway, accessory: look.accessory, outfit: look.outfit ?? 'none' }, equipped, name })
 
 export function parseAvatar(text) {
   let v = null

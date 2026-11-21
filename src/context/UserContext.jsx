@@ -218,6 +218,8 @@ function load(storageKey) {
   // Older saves equipped the block character; carry the title over to the Thunderbird.
   if (!ITEM_BY_ID[state.equipped?.colorway]) {
     state = { ...state, equipped: { ...DEFAULT_EQUIPPED, title: ITEM_BY_ID[state.equipped?.title] ? state.equipped.title : DEFAULT_EQUIPPED.title } }
+  } else if (!ITEM_BY_ID[state.equipped.outfit]) {
+    state = { ...state, equipped: { ...state.equipped, outfit: DEFAULT_EQUIPPED.outfit } } // outfit slot added later
   }
   const today = dayKey()
   if (state.daily?.date !== today) state = { ...state, daily: { date: today, ids: pickDailies(today) } }
