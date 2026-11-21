@@ -8,9 +8,9 @@ export const STAGES = {
 }
 export const stageFor = (level = 1) => (level >= 5 ? 'stormbird' : level >= 3 ? 'fledgling' : 'hatchling')
 
-/** body = main feathers, dark = wings/shell, belly, accent = lightning/crest, beak */
+/** body = main feathers, dark = wings/shell, belly = chest feathers, accent = crest tips/lightning, beak = beak + talons */
 export const COLORWAYS = {
-  classic: { name: 'Classic Navy & Gold', body: '#2c3f8f', dark: '#1b2766', belly: '#e7ecff', accent: '#ffc928', beak: '#ffb020' },
+  classic: { name: 'UBC Blue & Gold', body: '#5b8def', dark: '#3f6fd8', belly: '#ffffff', accent: '#ffcb3d', beak: '#ffc23a' },
   sky: { name: 'Pastel Sky', body: '#8fd0ff', dark: '#5aa9e6', belly: '#ffffff', accent: '#ffe066', beak: '#ffb84d' },
   sakura: { name: 'Sakura Pink', body: '#ffb3d1', dark: '#f287b3', belly: '#fff2f8', accent: '#ffd166', beak: '#ff9f6b' },
   mint: { name: 'Mint Sprout', body: '#86ebc0', dark: '#4fc99a', belly: '#f2fff8', accent: '#ffd23f', beak: '#ffb347' },
@@ -29,6 +29,16 @@ export const ACCESSORIES = {
   wizard: 'Wizard Hat',
   bow: 'Ribbon Bow',
   crown: 'Storm Crown',
+  gradscarf: 'Grad Scarf',
+  umbrella: 'Raincouver Umbrella',
+  rainhat: 'Rain Hat',
+}
+
+/** Chest gear, worn together with an accessory. */
+export const OUTFITS = {
+  none: 'No outfit',
+  jersey: 'UBC #1 Jersey',
+  hoodie: 'Engineering Hoodie',
 }
 
 export const DEFAULT_COMPANION_NAME = 'Sparky'
@@ -45,12 +55,13 @@ export function fallbackCompanionName(seed = '') {
 const OLD_COLOR = { '#fff1d6': 'classic', '#7dffc0': 'mint', '#7cd3ff': 'sky', '#ff9ccb': 'sakura', '#bba2ff': 'grape', '#ffd23f': 'storm' }
 const OLD_HAT = { cap: 'headphones', headband: 'scarf', party: 'sprout', wizard: 'wizard', crown: 'crown', none: 'none' }
 
-/** Any stored look (old or new) → { colorway, accessory, level }. */
+/** Any stored look (old or new) → { colorway, accessory, outfit, level }. */
 export function normalizeLook(look, level) {
   look = look || {}
   return {
     colorway: COLORWAYS[look.colorway] ? look.colorway : OLD_COLOR[look.color] ?? 'classic',
     accessory: ACCESSORIES[look.accessory] ? look.accessory : OLD_HAT[look.hat] ?? 'none',
+    outfit: OUTFITS[look.outfit] ? look.outfit : 'none',
     level: level ?? look.level ?? 1,
   }
 }
