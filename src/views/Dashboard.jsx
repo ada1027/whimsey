@@ -1,178 +1,88 @@
-import { CalendarCheck, Check, CircleHelp, ClipboardList, Dices, Coins, Flame, Gamepad2, Play, Plus, Shield, Target, Trophy, Users } from 'lucide-react'
+import { CalendarCheck, ChevronRight, Dices, Play, Users } from 'lucide-react'
+import { useState } from 'react'
 import Character from '../components/Character.jsx'
 import CurrentQuestCard from '../components/CurrentQuestCard.jsx'
 import FriendFeed from '../components/FriendFeed.jsx'
-import { CategoryTile, Countdown } from '../components/QuestBits.jsx'
-import { ROLLS_PER_DAY } from '../data/seed.js'
-import { useToast } from '../context/ToastContext.jsx'
-import { useOnline } from '../context/OnlineContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
-import { FILL } from '../data/tones.js'
+import { ROLLS_PER_DAY } from '../data/seed.js'
+
+const CHEERS = ['Let’s roll!', 'You got this!', 'Quest time!', 'Feeling lucky?', 'Go go go!']
 
 /**
- * Home screen, laid out from the wireframe:
- *   [pro tools] [ YOU + invite ] [friends / guild]
- *   [ PLAY ] [ CURRENT TASK ] [ GAMEMODE ]
+ * Action-first Home:
+ *   (active quest, if any) → hero PLAY card → Dailies strip → Friend activity feed
  */
-export default function Dashboard({ onNavigate, onOpenPlay, onOpenGamemode, onOpenActive }) {
-  const { profile, look, title, dailies, completedQuests, activeQuest: current, rollsLeft } = useUser()
-  const dailiesLeft = dailies.filter((d) => !d.attempt).length
-  const { party, inParty } = useOnline()
-  const toast = useToast()
-  const pro = profile.gamemode === 'pro'
+export default function Dashboard({ onNavigate, onOpenPlay }) {
+  const { profile, look, dailies, activeQuest, rollsLeft } = useUser()
+  const [cheer] = useState(() => CHEERS[new Date().getDate() % CHEERS.length])
 
   return (
-    <div className="space-y-5">
-      {/* ---------- Pinned: the quest to do right now ---------- */}
+    <div className="space-y-4">
+      {/* The quest in progress beats everything else */}
       <CurrentQuestCard />
 
-      {/* ---------- Stage ---------- */}
-      <section className="card stage relative overflow-hidden px-2 py-4">
-        <div className="pointer-events-none absolute -left-10 top-6 size-40 rounded-full bg-pink/30 blur-3xl" />
-        <div className="pointer-events-none absolute -right-10 bottom-0 size-40 rounded-full bg-blue/30 blur-3xl" />
+      <HeroPlay look={look} name={profile.companionName} cheer={cheer} rollsLeft={rollsLeft} busy={!!activeQuest} onPlay={onOpenPlay} />
 
-        <div className="relative grid grid-cols-[64px_1fr_64px] items-center gap-1">
-          {/* left column: pro tools */}
-          <div className="flex flex-col gap-4 self-start pt-6">
-            {pro && (
-              <>
-                <SideTile icon={ClipboardList} label="Daily" tone="blue" badge={dailiesLeft ? `x${dailiesLeft}` : null}
-                  onClick={() => onNavigate('quests', { tab: 'dailies' })} />
-                <SideTile icon={CircleHelp} label="Mystery" tone="grape"
-                  onClick={() => toast('A mystery event appears tomorrow…', { tone: 'grape', icon: CircleHelp })} />
-                <SideTile icon={Trophy} label="Ranks" tone="gold" onClick={() => onNavigate('social', { scrollTo: 'ranks' })} />
-              </>
-            )}
-          </div>
+      <DailyStrip dailies={dailies} onOpen={() => onNavigate('quests', { tab: 'dailies' })} />
 
-          {/* center: the player */}
-          <div className="relative flex flex-col items-center">
-            <p className="title-stroke text-3xl uppercase">You</p>
-            <p className="pill mt-1 bg-gold text-on-accent">{title}</p>
-            <div className="relative mt-1">
-              <button onClick={() => onNavigate('profile')} className="block w-36 animate-float" aria-label="Customize your character">
-                <Character look={look} className="w-full drop-shadow-[0_6px_0_rgb(0_0_0/.3)]" />
-              </button>
-              {/* wireframe: "+" next to the player = invite people to form a party */}
-              <button
-                onClick={() => onNavigate('social')}
-                className="btn btn-neon absolute -right-5 bottom-4 size-11 rounded-xl"
-                aria-label="Invite people to your party"
-                title="Invite to party"
-              >
-                <Plus size={24} strokeWidth={3.5} />
-              </button>
-            </div>
-          </div>
-
-          {/* right column: friends / guild */}
-          <div className="flex flex-col gap-4 self-start pt-6">
-            <SideTile icon={Users} label="Friends" tone="pink" onClick={() => onNavigate('social', { scrollTo: 'friends' })}
-              badge={inParty ? `${party.members.length}` : null} />
-            {pro && (
-              <SideTile icon={Shield} label="Guild" tone="neon"
-                onClick={() => toast('Guilds are coming soon!', { tone: 'neon', icon: Shield })} />
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ---------- Action row ---------- */}
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={onOpenPlay} className="btn btn-gold relative col-span-2 h-28 flex-col gap-0.5 rounded-3xl">
-          <span className="flex items-center gap-2 text-5xl leading-none"><Play size={36} fill="currentColor" strokeWidth={2.5} /> Play</span>
-          <span className="font-sans text-xs font-extrabold normal-case tracking-normal">
-            {current ? 'Finish your active quest first' : rollsLeft ? 'Roll a random whimsical quest' : 'Out of rolls — back tomorrow'}
-          </span>
-          <span className="pill mt-1 bg-surface text-ink [text-shadow:none]">
-            <Dices size={12} strokeWidth={3} /> Rolls left today: {rollsLeft}/{ROLLS_PER_DAY}
-          </span>
-        </button>
-
-        <button
-          onClick={() => (current ? onOpenActive() : onNavigate('quests', { tab: 'dailies' }))}
-          className="btn btn-blue h-24 min-w-0 flex-col gap-1 rounded-3xl px-3"
-        >
-          <span className="flex items-center gap-1.5 text-lg leading-none"><Target size={18} strokeWidth={3} /> Current task</span>
-          <span className="w-full truncate font-sans text-xs font-extrabold normal-case tracking-normal">
-            {current ? current.title : `None — ${dailiesLeft} dailies left`}
-          </span>
-        </button>
-
-        <button onClick={onOpenGamemode} className="btn btn-pink h-24 min-w-0 flex-col gap-1 rounded-3xl px-3">
-          <span className="flex items-center gap-1.5 text-lg leading-none"><Gamepad2 size={18} strokeWidth={3} /> Gamemode</span>
-          <span className="pill bg-white/90 text-[#1a1033] [text-shadow:none]">{pro ? 'Pro' : 'Simple'}</span>
-        </button>
-      </div>
-
-      <DailiesPreview dailies={dailies} onOpen={() => onNavigate('quests', { tab: 'dailies' })} />
-
-      <FriendFeed limit={8} />
-
-      {/* ---------- Quick stats ---------- */}
-      <div className="grid grid-cols-2 gap-3">
-        <Stat icon={Trophy} label="Level" value={profile.level} tone="grape" />
-        <Stat icon={Flame} label="Day streak" value={profile.streak} tone="pink" />
-        <Stat icon={Check} label="Quests done" value={completedQuests.length} tone="neon" />
-        <Stat icon={Coins} label="Coins" value={profile.coins} tone="gold" />
-      </div>
-
+      <FriendFeed
+        limit={12}
+        action={
+          <button onClick={() => onNavigate('social', { scrollTo: 'friends' })} className="flex items-center gap-1 font-display text-sm uppercase text-muted hover:text-ink">
+            <Users size={16} strokeWidth={2.75} /> Friends <ChevronRight size={14} strokeWidth={3} />
+          </button>
+        }
+      />
     </div>
   )
 }
 
-/** Compact view of today's 3 dailies. */
-function DailiesPreview({ dailies, onOpen }) {
-  const done = dailies.filter((d) => d.attempt?.status === 'completed').length
+function HeroPlay({ look, name, cheer, rollsLeft, busy, onPlay }) {
+  const sub = busy ? 'Finish your active quest first' : rollsLeft ? 'Roll a whimsical quest' : 'Out of rolls — back tomorrow'
   return (
-    <section className="card p-3.5" aria-label="Today's dailies">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-display text-xl uppercase"><CalendarCheck size={20} /> Today&apos;s dailies</h2>
-        <span className="pill bg-surface-3 text-ink">{done}/{dailies.length} done</span>
-      </div>
-      <ul className="space-y-2">
-        {dailies.map((d) => {
-          const a = d.attempt
-          return (
-            <li key={d.id}>
-              <button onClick={onOpen} className="flex w-full items-center gap-2.5 rounded-xl border-[3px] border-outline bg-surface-2 p-1.5 pr-2.5 text-left transition hover:-translate-y-0.5">
-                <div className="-m-1.5 scale-[.7]"><CategoryTile category={d.category} /></div>
-                <span className={`min-w-0 flex-1 truncate font-display ${a && a.status !== 'active' ? 'text-muted line-through' : ''}`}>{d.title}</span>
-                {a?.status === 'completed' ? <span className="pill bg-neon text-on-accent">Done</span>
-                  : a?.status === 'failed' ? <span className="pill bg-pink text-white">Failed</span>
-                    : a?.status === 'active' ? <Countdown expiresAt={a.expiresAt} />
-                      : <span className="pill bg-grape text-white">+{d.xp} XP</span>}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )
-}
-
-function SideTile({ icon: Icon, label, tone, onClick, badge }) {
-  return (
-    <button onClick={onClick} className="group flex flex-col items-center gap-1" aria-label={label}>
-      <span className={`btn relative size-14 rounded-2xl ${FILL[tone]}`}>
-        <Icon size={26} strokeWidth={2.5} />
-        {badge && <span className="absolute -right-2 -top-2 pill bg-pink px-1 text-[11px] leading-4 text-white">{badge}</span>}
+    <button
+      onClick={onPlay}
+      className="btn btn-gold relative w-full justify-start gap-2 overflow-hidden rounded-3xl p-3 pr-4 text-left"
+      aria-label={`Play: ${sub}. Rolls left today: ${rollsLeft} of ${ROLLS_PER_DAY}`}
+    >
+      {/* energy rays */}
+      <span className="pointer-events-none absolute -left-16 -top-16 size-64 animate-spin-slow bg-[repeating-conic-gradient(rgb(255_255_255/.25)_0deg_10deg,transparent_10deg_20deg)] [mask-image:radial-gradient(circle,black_20%,transparent_65%)]" />
+      <span className="relative w-28 shrink-0">
+        <span className="absolute -right-1 -top-1 z-10 rotate-6 rounded-xl border-[3px] border-outline bg-surface px-1.5 py-0.5 font-sans text-[10px] font-extrabold normal-case tracking-normal text-ink shadow-[0_3px_0_var(--outline)]">
+          {cheer}
+        </span>
+        <Character look={look} mood="cheer" className="w-full animate-float drop-shadow-[0_5px_0_rgb(0_0_0/.25)]" label={`${name} cheering you on`} />
       </span>
-      <span className="font-display text-xs uppercase tracking-wide text-white [text-shadow:0_2px_0_#05020f]">{label}</span>
+      <span className="relative flex min-w-0 flex-1 flex-col items-start gap-1">
+        <span className="flex items-center gap-2 text-5xl leading-none"><Play size={34} fill="currentColor" strokeWidth={2.5} /> Play</span>
+        <span className="font-sans text-sm font-extrabold normal-case leading-tight tracking-normal">{sub}</span>
+        <span className="pill mt-0.5 bg-surface text-ink [text-shadow:none]">
+          <Dices size={12} strokeWidth={3} /> Rolls left today: {rollsLeft}/{ROLLS_PER_DAY}
+        </span>
+      </span>
     </button>
   )
 }
 
-function Stat({ icon: Icon, label, value, tone }) {
+const DOT = {
+  completed: 'bg-neon',
+  failed: 'bg-pink',
+  active: 'bg-gold animate-pulse',
+}
+
+/** Slim progress bar for today's 3 dailies. */
+function DailyStrip({ dailies, onOpen }) {
+  const done = dailies.filter((d) => d.attempt?.status === 'completed').length
   return (
-    <div className="card flex items-center gap-3 p-3">
-      <span className={`grid size-11 shrink-0 place-items-center rounded-xl border-[3px] border-outline shadow-[inset_0_-4px_0_rgb(0_0_0/.2)] ${FILL[tone]}`}>
-        <Icon size={20} strokeWidth={2.75} />
+    <button onClick={onOpen} className="card flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition active:translate-y-0.5" aria-label={`Dailies: ${done} of ${dailies.length} done. Go to Quests`}>
+      <CalendarCheck size={20} strokeWidth={2.75} className="shrink-0" />
+      <span className="font-display uppercase tracking-wide">Dailies: {done}/{dailies.length} Done</span>
+      <span className="ml-auto flex items-center gap-1.5">
+        {dailies.map((d) => (
+          <span key={d.id} title={d.title} className={`size-3.5 rounded-full border-[3px] border-outline ${DOT[d.attempt?.status] ?? 'bg-surface-3'}`} />
+        ))}
       </span>
-      <div className="min-w-0">
-        <p className="font-display text-2xl leading-none tabular-nums">{value}</p>
-        <p className="truncate text-[11px] font-extrabold uppercase tracking-wider text-muted">{label}</p>
-      </div>
-    </div>
+      <ChevronRight size={18} strokeWidth={3} className="shrink-0 text-muted" />
+    </button>
   )
 }

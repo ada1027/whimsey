@@ -7,6 +7,7 @@ import LoginScreen from './components/LoginScreen.jsx'
 import NavBar from './components/NavBar.jsx'
 import PartyVoteModal from './components/PartyVoteModal.jsx'
 import PlayModal from './components/PlayModal.jsx'
+import { UserProfileModal } from './components/Profiles.jsx'
 import QuestFailedModal from './components/QuestFailedModal.jsx'
 import RewardOverlay from './components/RewardOverlay.jsx'
 import StatusBar from './components/StatusBar.jsx'
@@ -77,6 +78,7 @@ function Game() {
       <RewardOverlay onNavigate={navigate} />
       <QuestFailedModal onNavigate={navigate} />
       <PartyVoteModal />
+      <UserProfileModal />
     </>
   )
 }

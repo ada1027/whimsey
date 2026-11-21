@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { applyXp } from '../data/progression.js'
 import {
-  CATALOG_BY_ID, coinsFor, dayKey, DEFAULT_PROFILE, DIFFICULTY, ITEM_BY_ID, isOwned, PARTY_BONUS, penaltyFor, pickDailies,
+  CATALOG_BY_ID, coinsFor, dayKey, DEFAULT_EQUIPPED, DEFAULT_PROFILE, DIFFICULTY, ITEM_BY_ID, isOwned, PARTY_BONUS, penaltyFor, pickDailies,
   RANDOM_BY_ID, resolveLook, ROLLS_PER_DAY,
 } from '../data/seed.js'
 
@@ -209,12 +209,16 @@ function load(storageKey) {
         : {
             // Older saves: keep identity, progress and finished quests; start the new daily loop clean.
             ...DEFAULT_PROFILE,
-            ...Object.fromEntries(['username', 'bio', 'tags', 'gamemode', 'level', 'xp', 'maxXp', 'coins', 'equipped', 'purchased']
+            ...Object.fromEntries(['username', 'bio', 'tags', 'gamemode', 'level', 'xp', 'maxXp', 'coins', 'purchased']
               .filter((k) => k in saved).map((k) => [k, saved[k]])),
             quests: (saved.quests ?? []).filter((q) => q.status === 'completed'),
           }
     }
   } catch { /* storage unavailable or corrupt */ }
+  // Older saves equipped the block character; carry the title over to the Thunderbird.
+  if (!ITEM_BY_ID[state.equipped?.colorway]) {
+    state = { ...state, equipped: { ...DEFAULT_EQUIPPED, title: ITEM_BY_ID[state.equipped?.title] ? state.equipped.title : DEFAULT_EQUIPPED.title } }
+  }
   const today = dayKey()
   if (state.daily?.date !== today) state = { ...state, daily: { date: today, ids: pickDailies(today) } }
   if (state.rolls?.date !== today) state = { ...state, rolls: freshRolls(today) }
@@ -259,7 +263,7 @@ export function UserProvider({ storageKey, children }) {
       profile: state,
       rollsLeft: rollsLeft(state),
       pendingRoll: RANDOM_BY_ID[state.rolls?.pending] ?? null,
-      look: resolveLook(state.equipped),
+      look: resolveLook(state.equipped, state.level),
       title: ITEM_BY_ID[state.equipped.title]?.name ?? 'Rookie',
       dailies,
       /** The one quest in progress (solo or group), or null. */

@@ -3,17 +3,16 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import Character from '../components/Character.jsx'
-import FriendFeed from '../components/FriendFeed.jsx'
 import { Modal, PageTitle, Pill, SectionTitle } from '../components/ui.jsx'
 import { presence, useOnline } from '../context/OnlineContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import { MAX_PARTY_SIZE } from '../data/seed.js'
-import { parseAvatar } from '../lib/api.js'
+import { lookOf } from '../lib/api.js'
 
-const lookOf = (profile) => parseAvatar(profile?.avatar).look
-
-/** params.scrollTo: 'friends' | 'ranks' — smooth-scrolls to that section once data has loaded. */
+/**
+ * Two focused sections: the party lobby, and friends & open parties.
+ * params.scrollTo: 'friends' — smooth-scrolls to that section once data has loaded. */
 export default function Social({ onNavigate, params = {} }) {
   const { loaded, error } = useOnline()
   const [adding, setAdding] = useState(false)
@@ -45,12 +44,8 @@ export default function Social({ onNavigate, params = {} }) {
 
       {loaded && (
         <>
-          <FriendFeed limit={3} title="Latest from friends" />
           <PartyCard onNavigate={onNavigate} onInvite={() => setInviting(true)} />
-          <FriendRequests />
-          <JoinableParties />
-          <FriendsList onAdd={() => setAdding(true)} />
-          <Leaderboard />
+          <FriendsHub onAdd={() => setAdding(true)} />
         </>
       )}
 
@@ -197,6 +192,7 @@ function Switch({ checked, onChange, label }) {
 const isViewable = (url) => /^(https?:|data:image)/.test(url ?? '')
 
 function PartySlot({ member, isMe, leader, status, onKick }) {
+  const { openProfile } = useOnline()
   const name = isMe ? 'You' : member.profile.username
   const badge =
     status === 'lobby' ? (leader ? null : member.is_ready ? { tone: 'bg-neon text-on-accent', text: 'Ready' } : { tone: 'bg-surface-3 text-ink', text: '…' })
@@ -212,7 +208,9 @@ function PartySlot({ member, isMe, leader, status, onKick }) {
         </span>
       )}
       <div className={`relative aspect-square w-full overflow-hidden rounded-2xl border-[3px] border-outline bg-white/15 ${leader ? 'ring-2 ring-gold' : ''}`}>
-        <Character look={member.look} crop="head" className="size-full" />
+        <button onClick={() => member.profile.id && openProfile(member.user_id)} className="block size-full" aria-label={`Open ${name === 'You' ? 'your' : `${name}'s`} profile`}>
+          <Character look={member.look} crop="head" className="size-full" />
+        </button>
         {badge && <span className={`pill absolute bottom-0.5 right-0.5 px-1 py-0 text-[9px] leading-4 ${badge.tone}`}>{badge.text}</span>}
         {isViewable(member.proof_url) && (
           <a href={member.proof_url} target="_blank" rel="noreferrer" className="absolute bottom-0.5 left-0.5 size-6 overflow-hidden rounded-md border-2 border-outline" title="View proof">
@@ -246,63 +244,78 @@ function OpenSlot({ canInvite, onClick }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Requests, joinable parties, friends, leaderboard                    */
+/* Friends & open parties                                              */
 /* ------------------------------------------------------------------ */
 
 function Head({ profile, size = 'size-12', dot }) {
+  const { openProfile } = useOnline()
   return (
-    <div className="relative shrink-0">
+    <button onClick={() => openProfile(profile.id)} className="relative shrink-0 transition hover:-translate-y-0.5" aria-label={`Open ${profile.username}'s profile`}>
       <div className={`stage ${size} overflow-hidden rounded-xl border-[3px] border-outline`}>
         <Character look={lookOf(profile)} crop="head" className="size-full" />
       </div>
       {dot && <span className={`absolute -bottom-1 -right-1 size-4 rounded-full border-[3px] border-outline ${dot}`} />}
-    </div>
+    </button>
   )
 }
 
+/** A person, with avatar + name that open their profile. */
 function PersonRow({ profile, note, children }) {
+  const { openProfile } = useOnline()
   const p = presence(profile)
   return (
     <li className="flex items-center gap-3 rounded-2xl border-[3px] border-outline bg-surface-2 p-2">
       <Head profile={profile} dot={p.dot} />
-      <div className="min-w-0 flex-1">
+      <button onClick={() => openProfile(profile.id)} className="min-w-0 flex-1 text-left">
         <p className="flex items-center gap-1.5 font-display text-lg leading-tight">
-          <span className="truncate">{profile.username}</span>
+          <span className="truncate hover:underline">{profile.username}</span>
           <Pill tone="grape" className="text-[10px] leading-4">LV {profile.level}</Pill>
         </p>
         <p className="truncate text-xs font-bold text-muted">{note ?? p.label}</p>
-      </div>
+      </button>
       {children}
     </li>
   )
 }
 
-function FriendRequests() {
-  const { incoming, acceptFriend, removeFriendship } = useOnline()
-  if (!incoming.length) return null
+function SubHeading({ children, count }) {
   return (
-    <section className="card p-4">
-      <SectionTitle icon={UserCheck} tone="neon">Friend requests <Pill tone="pink">{incoming.length}</Pill></SectionTitle>
-      <ul className="space-y-2.5">
-        {incoming.map((f) => (
-          <PersonRow key={f.id} profile={f.profile} note="Wants to be friends">
-            <button onClick={() => removeFriendship(f.id)} className="btn btn-ghost size-10 rounded-xl" aria-label={`Decline ${f.profile.username}`}><X size={16} strokeWidth={3} /></button>
-            <button onClick={() => acceptFriend(f.id)} className="btn btn-neon h-10 px-3 text-sm"><Check size={16} strokeWidth={3.5} /> Accept</button>
-          </PersonRow>
-        ))}
-      </ul>
-    </section>
+    <p className="mb-2 mt-4 flex items-center gap-2 font-display text-sm uppercase tracking-widest text-muted first:mt-0">
+      {children} {count != null && <Pill tone="dark" className="text-[10px] leading-4">{count}</Pill>}
+    </p>
   )
 }
 
-function JoinableParties() {
-  const { lobbies, join, inParty } = useOnline()
+/** Search/add, incoming requests, friends' open lobbies, and your friends list. */
+function FriendsHub({ onAdd }) {
+  const { friends, incoming, outgoing, lobbies, isLeader, partyLeader, acceptFriend, removeFriendship, join, inParty } = useOnline()
   const toast = useToast()
+
   return (
-    <section className="card p-4">
-      <SectionTitle icon={LogIn} tone="blue">Joinable parties</SectionTitle>
+    <section id="friends-section" className="card scroll-mt-4 p-4" aria-label="Friends and open parties">
+      <SectionTitle icon={Users} tone="pink" action={
+        <button onClick={onAdd} className="btn btn-pink h-10 px-3 text-sm"><Search size={16} strokeWidth={3} /> Find friends</button>
+      }>
+        Friends
+      </SectionTitle>
+
+      {incoming.length > 0 && (
+        <>
+          <SubHeading count={incoming.length}><UserCheck size={14} /> Requests</SubHeading>
+          <ul className="space-y-2.5">
+            {incoming.map((f) => (
+              <PersonRow key={f.id} profile={f.profile} note="Wants to be friends">
+                <button onClick={() => removeFriendship(f.id)} className="btn btn-ghost size-10 rounded-xl" aria-label={`Decline ${f.profile.username}`}><X size={16} strokeWidth={3} /></button>
+                <button onClick={() => acceptFriend(f.id)} className="btn btn-neon h-10 px-3 text-sm"><Check size={16} strokeWidth={3.5} /> Accept</button>
+              </PersonRow>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <SubHeading count={lobbies.length}><LogIn size={14} /> Open parties</SubHeading>
       {lobbies.length === 0 ? (
-        <p className="text-sm font-bold text-muted">No friends are hosting an open lobby right now. When a friend creates a party it shows up here live.</p>
+        <p className="text-sm font-bold text-muted">No friends are hosting a lobby right now — new ones appear here live.</p>
       ) : (
         <ul className="space-y-2.5">
           {lobbies.map((lobby) => {
@@ -313,7 +326,7 @@ function JoinableParties() {
                 <div className="flex -space-x-2">
                   {lobby.members.map((m, i) => (
                     <div key={m.user_id} className="relative">
-                      {i === 0 && <Crown size={14} fill="currentColor" className="absolute -top-2.5 left-1/2 z-10 -translate-x-1/2 text-gold drop-shadow-[0_1px_0_#05020f]" />}
+                      {i === 0 && <Crown size={14} fill="currentColor" className="pointer-events-none absolute -top-2.5 left-1/2 z-10 -translate-x-1/2 text-gold drop-shadow-[0_1px_0_#05020f]" />}
                       <Head profile={m.profile} size="size-10" />
                     </div>
                   ))}
@@ -323,7 +336,7 @@ function JoinableParties() {
                   <Pill tone="dark" className="text-[10px] leading-4">{lobby.members.length}/{MAX_PARTY_SIZE} players</Pill>
                 </div>
                 <button disabled={full} className="btn btn-blue h-10 shrink-0 px-3 text-sm"
-                  onClick={async () => { await join(lobby); toast(inParty ? `Left your party and joined ${leader?.username}'s` : `Joined ${leader?.username}'s party!`, { tone: 'neon', icon: LogIn }) }}>
+                  onClick={async () => { const ok = await join(lobby); if (ok) toast(inParty ? `Left your party and joined ${leader?.username}'s` : `Joined ${leader?.username}'s party!`, { tone: 'neon', icon: LogIn }) }}>
                   {full ? 'Full' : <><LogIn size={16} strokeWidth={3} /> Join</>}
                 </button>
               </li>
@@ -331,29 +344,8 @@ function JoinableParties() {
           })}
         </ul>
       )}
-    </section>
-  )
-}
 
-function FriendAction({ profile }) {
-  const { party, isLeader, invite } = useOnline()
-  const toast = useToast()
-  const inMyParty = party?.members.some((m) => m.user_id === profile.id)
-  if (inMyParty) return <Pill tone="neon" icon={Check}>In party</Pill>
-  if (!isLeader || (party && party.status !== 'lobby')) return null
-  return (
-    <button className="btn btn-blue h-10 shrink-0 px-3 text-sm"
-      onClick={async () => { await invite(profile.id); toast(`Pulled ${profile.username} into your party!`, { tone: 'neon', icon: Send }) }}>
-      <Plus size={16} strokeWidth={3.5} /> Invite
-    </button>
-  )
-}
-
-function FriendsList({ onAdd }) {
-  const { friends, outgoing, isLeader, partyLeader, removeFriendship } = useOnline()
-  return (
-    <section id="friends-section" className="card scroll-mt-4 p-4">
-      <SectionTitle icon={Users} tone="pink">Friends <Pill tone="dark">{friends.length}</Pill></SectionTitle>
+      <SubHeading count={friends.length}><Users size={14} /> Your friends</SubHeading>
       {!isLeader && <p className="mb-2 text-xs font-bold text-muted">You&apos;re in {partyLeader?.profile.username}&apos;s party — only the leader can invite.</p>}
       {friends.length === 0 && outgoing.length === 0 ? (
         <div className="text-center">
@@ -374,6 +366,25 @@ function FriendsList({ onAdd }) {
   )
 }
 
+/** Bots join instantly; real friends get a party invite in their notification bell. */
+function FriendAction({ profile }) {
+  const { party, isLeader, invite, invitesSent } = useOnline()
+  const toast = useToast()
+  const inMyParty = party?.members.some((m) => m.user_id === profile.id)
+  if (inMyParty) return <Pill tone="neon" icon={Check}>In party</Pill>
+  if (!isLeader || (party && party.status !== 'lobby')) return null
+  if (invitesSent.has(profile.id)) return <Pill tone="dark" icon={Send}>Invited</Pill>
+  return (
+    <button className="btn btn-blue h-10 shrink-0 px-3 text-sm"
+      onClick={async () => {
+        await invite(profile.id)
+        toast(profile.is_bot ? `${profile.username} joined your party!` : `Party invite sent to ${profile.username}`, { tone: 'neon', icon: Send })
+      }}>
+      <Plus size={16} strokeWidth={3.5} /> Invite
+    </button>
+  )
+}
+
 function InviteModal({ onClose }) {
   const { friends } = useOnline()
   return (
@@ -383,26 +394,6 @@ function InviteModal({ onClose }) {
         : <ul className="space-y-2.5">{friends.map((f) => <PersonRow key={f.id} profile={f.profile}><FriendAction profile={f.profile} /></PersonRow>)}</ul>}
       <button onClick={onClose} className="btn btn-gold mt-4 h-12 w-full text-lg">Done</button>
     </Modal>
-  )
-}
-
-function Leaderboard() {
-  const { leaderboard } = useOnline()
-  const medal = ['bg-gold text-on-accent', 'bg-[#d9dcf0] text-[#1a1033]', 'bg-[#e8935a] text-[#1a1033]']
-  return (
-    <section id="ranks-section" className="card scroll-mt-4 p-4">
-      <SectionTitle icon={Crown} tone="gold">Friend ranks</SectionTitle>
-      <ol className="space-y-2">
-        {leaderboard.map((p, i) => (
-          <li key={p.id} className={`flex items-center gap-2.5 rounded-2xl border-[3px] p-1.5 pr-3 ${p.me ? 'border-outline bg-gold/25' : 'border-transparent'}`}>
-            <span className={`grid size-8 shrink-0 place-items-center rounded-lg border-[3px] border-outline font-display ${medal[i] ?? 'bg-surface-2'}`}>{i + 1}</span>
-            <div className="stage size-9 shrink-0 overflow-hidden rounded-lg border-2 border-outline"><Character look={p.look} crop="head" className="size-full" /></div>
-            <span className="min-w-0 flex-1 truncate font-display">{p.username}{p.me && <span className="text-muted"> (you)</span>}</span>
-            <span className="font-display tabular-nums">LV {p.level}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
   )
 }
 

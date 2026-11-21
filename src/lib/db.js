@@ -8,7 +8,7 @@
 
 import { isSupabaseConfigured, PROOF_BUCKET, supabase } from './supabase.js'
 
-export const TABLES = ['profiles', 'friendships', 'parties', 'party_members', 'quest_feed']
+export const TABLES = ['profiles', 'friendships', 'parties', 'party_members', 'quest_feed', 'notifications']
 
 /* ------------------------------------------------------------------ */
 /* Supabase                                                            */
@@ -89,6 +89,7 @@ const DEFAULTS = {
   friendships: () => ({ id: uuid(), status: 'pending', created_at: now() }),
   parties: () => ({ id: uuid(), status: 'lobby', current_quest: null, rerolls_used: 0, votes: {}, created_at: now(), updated_at: now() }),
   party_members: () => ({ id: uuid(), is_ready: false, has_completed: false, completion_mode: null, proof_url: null, joined_at: now() }),
+  notifications: () => ({ id: uuid(), actor_id: null, payload: {}, read: false, created_at: now() }),
   quest_feed: () => ({ id: uuid(), proof_url: null, completion_tag: null, duration_seconds: null, reactions: {}, category: null, party: null, created_at: now() }),
 }
 
@@ -187,6 +188,7 @@ const mockAdapter = {
       db.friendships = db.friendships.filter((x) => !ids.includes(x.user_id) && !ids.includes(x.friend_id))
       db.party_members = db.party_members.filter((m) => !ids.includes(m.user_id))
       db.quest_feed = db.quest_feed.filter((x) => !ids.includes(x.user_id))
+      db.notifications = db.notifications.filter((x) => !ids.includes(x.user_id) && !ids.includes(x.actor_id))
     }
     writeDb(db, table)
   },

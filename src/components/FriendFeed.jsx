@@ -2,7 +2,7 @@ import { Activity, Users } from 'lucide-react'
 import { useOnline } from '../context/OnlineContext.jsx'
 import { CATEGORIES, QUEST_TYPE_LABEL, REACTIONS } from '../data/seed.js'
 import { FILL } from '../data/tones.js'
-import { parseAvatar } from '../lib/api.js'
+import { lookOf } from '../lib/api.js'
 import Character from './Character.jsx'
 import { CategoryTile } from './QuestBits.jsx'
 import { Pill, SectionTitle } from './ui.jsx'
@@ -32,43 +32,44 @@ function duration(sec) {
 }
 
 /** Photo / video if it's shareable, otherwise a sample card. */
-function ProofPreview({ url, category, title }) {
+export function ProofPreview({ url, category, title, square = false }) {
   const tone = CATEGORIES[category]?.tone ?? 'grape'
   const isVideo = /^data:video|\.(mp4|webm|mov)(\?|$)/i.test(url ?? '')
   if (/^(https?:|data:|blob:)/.test(url ?? '')) {
     return isVideo
-      ? <video src={url} controls muted playsInline className="aspect-[4/3] w-full rounded-2xl border-[3px] border-outline bg-black object-cover" />
-      : <img src={url} alt={`Proof for ${title}`} loading="lazy" className="aspect-[4/3] w-full rounded-2xl border-[3px] border-outline object-cover" />
+      ? <video src={url} controls={!square} muted playsInline className={`${square ? 'aspect-square rounded-xl border-2' : 'aspect-[4/3] rounded-2xl border-[3px]'} w-full border-outline bg-black object-cover`} />
+      : <img src={url} alt={`Proof for ${title}`} loading="lazy" className={`${square ? 'aspect-square rounded-xl border-2' : 'aspect-[4/3] rounded-2xl border-[3px]'} w-full border-outline object-cover`} />
   }
   const sample = url?.startsWith('sample:') ? url.slice(7) : null
   const emoji = sample && !/^[\w.-]+$/.test(sample) ? sample : SAMPLE_EMOJI[sample] ?? CATEGORY_EMOJI[category] ?? '✨'
   return (
-    <div className={`relative grid aspect-[4/3] w-full place-items-center overflow-hidden rounded-2xl border-[3px] border-outline bg-gradient-to-br ${GRADIENT[tone]}`}>
+    <div className={`relative grid w-full place-items-center overflow-hidden border-outline bg-gradient-to-br ${square ? 'aspect-square rounded-xl border-2' : 'aspect-[4/3] rounded-2xl border-[3px]'} ${GRADIENT[tone]}`}>
       <div className="absolute inset-0 bg-[repeating-conic-gradient(rgb(255_255_255/.12)_0deg_10deg,transparent_10deg_20deg)]" />
-      <span className="relative text-7xl drop-shadow-[0_4px_0_rgb(0_0_0/.25)]">{emoji}</span>
-      {!url && <span className="absolute bottom-2 pill bg-surface text-ink">Proof kept on device</span>}
+      <span className={`relative drop-shadow-[0_4px_0_rgb(0_0_0/.25)] ${square ? 'text-4xl' : 'text-7xl'}`}>{emoji}</span>
+      {!url && !square && <span className="absolute bottom-2 pill bg-surface text-ink">Proof kept on device</span>}
     </div>
   )
 }
 
-function Head({ look, className = 'size-10' }) {
-  return (
-    <div className={`stage shrink-0 overflow-hidden rounded-xl border-[3px] border-outline ${className}`}>
-      <Character look={look} crop="head" className="size-full" />
-    </div>
-  )
+function Head({ look, className = 'size-10', onClick, label }) {
+  const inner = <Character look={look} crop="head" className="size-full" />
+  const cls = `stage shrink-0 overflow-hidden rounded-xl border-[3px] border-outline ${className}`
+  return onClick
+    ? <button onClick={onClick} className={`${cls} transition hover:-translate-y-0.5`} aria-label={label}>{inner}</button>
+    : <div className={cls}>{inner}</div>
 }
 
-function FeedPost({ post, now, profilesById, onReact }) {
-  const look = parseAvatar(post.author.avatar).look
+export function FeedPost({ post, now, profilesById, onReact, onOpenProfile }) {
+  const look = lookOf(post.author)
+  const open = () => onOpenProfile?.(post.user_id)
   const type = post.quest_type
   return (
     <article className="card overflow-hidden p-3" aria-label={`${post.author.username} completed ${post.quest_title}`}>
       <header className="flex items-center gap-2.5">
-        <Head look={look} />
+        <Head look={look} onClick={open} label={`Open ${post.author.username}'s profile`} />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 font-display text-base leading-tight">
-            <span className="truncate">{post.isMine ? 'You' : post.author.username}</span>
+            <button onClick={open} className="truncate hover:underline">{post.isMine ? 'You' : post.author.username}</button>
             <Pill tone="grape" className="text-[10px] leading-4">LV {post.author.level}</Pill>
           </p>
           <p className="text-xs font-bold text-muted">{timeAgo(post.created_at, now)}</p>
@@ -89,7 +90,10 @@ function FeedPost({ post, now, profilesById, onReact }) {
       {type === 'group' && post.party?.length > 0 && (
         <div className="mt-2.5 flex items-center gap-2">
           <div className="flex -space-x-2">
-            {post.party.map((m) => <Head key={m.id ?? m.name} look={m.look ?? parseAvatar(profilesById[m.id]?.avatar).look} className="size-8 rounded-lg border-2" />)}
+            {post.party.map((m) => (
+              <Head key={m.id ?? m.name} look={m.look ?? lookOf(profilesById[m.id])} className="size-8 rounded-lg border-2"
+                onClick={m.id ? () => onOpenProfile?.(m.id) : undefined} label={`Open ${m.name}'s profile`} />
+            ))}
           </div>
           <p className="min-w-0 flex-1 truncate text-xs font-extrabold text-muted">{post.party.map((m) => m.name).join(', ')}</p>
           {post.completion_tag && (
@@ -122,21 +126,21 @@ function FeedPost({ post, now, profilesById, onReact }) {
 }
 
 /** Strava/BeReal-style feed of friends' completed quests with proof + reactions. */
-export default function FriendFeed({ limit = 10, title = 'Friend activity' }) {
-  const { feed, loaded, profilesById, toggleReaction } = useOnline()
+export default function FriendFeed({ limit = 10, title = 'Friend activity', action }) {
+  const { feed, loaded, profilesById, toggleReaction, openProfile } = useOnline()
   const now = useNow(30_000)
   const posts = feed.slice(0, limit)
 
   return (
     <section aria-label={title}>
-      <SectionTitle icon={Activity} tone="pink">{title}</SectionTitle>
+      <SectionTitle icon={Activity} tone="pink" action={action}>{title}</SectionTitle>
       {!loaded ? (
         <p className="py-6 text-center font-bold text-muted">Loading feed…</p>
       ) : posts.length === 0 ? (
         <div className="card p-5 text-center text-sm font-bold text-muted">No activity yet. Complete a quest to post your proof!</div>
       ) : (
         <div className="space-y-4">
-          {posts.map((p) => <FeedPost key={p.id} post={p} now={now} profilesById={profilesById} onReact={toggleReaction} />)}
+          {posts.map((p) => <FeedPost key={p.id} post={p} now={now} profilesById={profilesById} onReact={toggleReaction} onOpenProfile={openProfile} />)}
         </div>
       )}
     </section>

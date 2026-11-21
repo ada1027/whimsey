@@ -53,7 +53,7 @@ export function SessionProvider({ children }) {
     const existing = await api.findProfileByUsername(name)
     const profile = existing ?? await api.createProfile({
       username: name,
-      avatar: api.encodeAvatar(resolveLook(localState.equipped), localState.equipped),
+      avatar: api.encodeAvatar(resolveLook(localState.equipped), localState.equipped, localState.companionName),
       level: localState.level,
       xp: localState.xp,
       coins: localState.coins,
@@ -64,11 +64,12 @@ export function SessionProvider({ children }) {
     const key = userStoreKey(profile.id)
     if (!localStorage.getItem(key)) {
       const { lastReward: _r, lastAccepted: _a, lastFailure: _f, ...base } = localState
-      const saved = existing ? api.parseAvatar(existing.avatar).equipped : null
+      const parsed = existing ? api.parseAvatar(existing.avatar) : null
+      const saved = parsed?.equipped
       const equipped = saved && Object.values(saved).every((id) => ITEM_BY_ID[id]) ? saved : base.equipped ?? DEFAULT_EQUIPPED
       const maxXp = maxXpForLevel(profile.level)
       const start = existing
-        ? { ...base, username: profile.username, level: profile.level, xp: Math.min(profile.xp, maxXp - 1), maxXp, coins: profile.coins, streak: profile.streak, equipped }
+        ? { ...base, username: profile.username, level: profile.level, xp: Math.min(profile.xp, maxXp - 1), maxXp, coins: profile.coins, streak: profile.streak, equipped, companionName: parsed.name || base.companionName }
         : { ...base, username: profile.username }
       try { localStorage.setItem(key, JSON.stringify(start)) } catch { /* ignore */ }
     }

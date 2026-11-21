@@ -1,19 +1,22 @@
-import { Cloud, Gamepad2, HardDrive, LogOut, Map, Menu, Moon, RotateCcw, ShoppingBag, Sun } from 'lucide-react'
+import { Bell, Cloud, Gamepad2, HardDrive, LogOut, Menu, Moon, RotateCcw, ShoppingBag, Sun } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSession } from '../context/SessionContext.jsx'
+import { useOnline } from '../context/OnlineContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
-import { useToast } from '../context/ToastContext.jsx'
 import { useUser } from '../context/UserContext.jsx'
 import Character from './Character.jsx'
+import NotificationsDrawer from './NotificationsDrawer.jsx'
 import { XPBar } from './ui.jsx'
 
 /** Top bar from the wireframe: profile card (left) · map / shop / menu (right). */
 export default function StatusBar({ onNavigate, onOpenGamemode }) {
   const { profile, look, title } = useUser()
-  const toast = useToast()
+  const { unreadCount } = useOnline()
+  const [inboxOpen, setInboxOpen] = useState(false)
   const pro = profile.gamemode === 'pro'
 
   return (
+    <>
     <header className="relative z-30 shrink-0 border-b-[3px] border-outline bg-surface">
       <div className="flex items-center gap-2 px-3 py-2">
         {/* Profile card */}
@@ -40,9 +43,16 @@ export default function StatusBar({ onNavigate, onOpenGamemode }) {
         </button>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <IconBtn label="Interactive map" onClick={() => toast('Interactive map coming soon!', { tone: 'blue', icon: Map })}>
-            <Map size={18} strokeWidth={2.75} />
-          </IconBtn>
+          <div className="relative">
+            <IconBtn label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'} onClick={() => setInboxOpen(true)}>
+              <Bell size={18} strokeWidth={2.75} className={unreadCount ? 'animate-wiggle' : ''} />
+            </IconBtn>
+            {unreadCount > 0 && (
+              <span className="pointer-events-none absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full border-[3px] border-outline bg-pink px-1 font-display text-[11px] leading-4 text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </div>
           {pro && (
             <IconBtn label="Shop" onClick={() => onNavigate('profile')} tone="btn-gold">
               <ShoppingBag size={18} strokeWidth={2.75} />
@@ -52,6 +62,8 @@ export default function StatusBar({ onNavigate, onOpenGamemode }) {
         </div>
       </div>
     </header>
+    {inboxOpen && <NotificationsDrawer onClose={() => setInboxOpen(false)} onNavigate={onNavigate} />}
+    </>
   )
 }
 

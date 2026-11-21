@@ -124,41 +124,30 @@ export const SAMPLE_FEED = [
 /* ---------- Avatar locker ---------- */
 
 export const SLOTS = [
-  { id: 'color', label: 'Color' },
-  { id: 'face', label: 'Face' },
-  { id: 'hat', label: 'Hat' },
-  { id: 'item', label: 'Gear' },
+  { id: 'colorway', label: 'Colorway' },
+  { id: 'accessory', label: 'Accessory' },
   { id: 'title', label: 'Title' },
 ]
 
 // unlock: { level } is earned automatically, { coins } is bought in the shop.
 export const ITEMS = [
-  { id: 'color-cream', slot: 'color', name: 'Marshmallow', value: '#fff1d6' },
-  { id: 'color-mint', slot: 'color', name: 'Mint', value: '#7dffc0' },
-  { id: 'color-sky', slot: 'color', name: 'Sky', value: '#7cd3ff', unlock: { level: 2 } },
-  { id: 'color-bubble', slot: 'color', name: 'Bubblegum', value: '#ff9ccb', unlock: { coins: 30 } },
-  { id: 'color-grape', slot: 'color', name: 'Grape', value: '#bba2ff', unlock: { coins: 60 } },
-  { id: 'color-gold', slot: 'color', name: 'Golden', value: '#ffd23f', unlock: { level: 5 } },
+  { id: 'cw-classic', slot: 'colorway', name: 'Classic Navy & Gold', value: 'classic' },
+  { id: 'cw-sky', slot: 'colorway', name: 'Pastel Sky', value: 'sky' },
+  { id: 'cw-sakura', slot: 'colorway', name: 'Sakura Pink', value: 'sakura' },
+  { id: 'cw-mint', slot: 'colorway', name: 'Mint Sprout', value: 'mint' },
+  { id: 'cw-sunset', slot: 'colorway', name: 'Sunset', value: 'sunset' },
+  { id: 'cw-grape', slot: 'colorway', name: 'Grape Soda', value: 'grape', unlock: { coins: 40 } },
+  { id: 'cw-galaxy', slot: 'colorway', name: 'Galaxy', value: 'galaxy', unlock: { level: 4 } },
+  { id: 'cw-storm', slot: 'colorway', name: 'Storm Gold', value: 'storm', unlock: { level: 6 } },
 
-  { id: 'face-classic', slot: 'face', name: 'Classic', value: 'classic' },
-  { id: 'face-happy', slot: 'face', name: 'Joyful', value: 'happy' },
-  { id: 'face-determined', slot: 'face', name: 'Determined', value: 'determined', unlock: { level: 2 } },
-  { id: 'face-sleepy', slot: 'face', name: 'Sleepy', value: 'sleepy', unlock: { coins: 20 } },
-  { id: 'face-star', slot: 'face', name: 'Starstruck', value: 'star', unlock: { level: 4 } },
-
-  { id: 'hat-none', slot: 'hat', name: 'No Hat', value: 'none' },
-  { id: 'hat-cap', slot: 'hat', name: 'Cap', value: 'cap' },
-  { id: 'hat-headband', slot: 'hat', name: 'Headband', value: 'headband', unlock: { level: 2 } },
-  { id: 'hat-party', slot: 'hat', name: 'Party Hat', value: 'party', unlock: { coins: 25 } },
-  { id: 'hat-wizard', slot: 'hat', name: 'Wizard Hat', value: 'wizard', unlock: { level: 3 } },
-  { id: 'hat-crown', slot: 'hat', name: 'Crown', value: 'crown', unlock: { level: 5 } },
-
-  { id: 'item-bat', slot: 'item', name: 'Slugger Bat', value: 'bat' },
-  { id: 'item-bottle', slot: 'item', name: 'Water Bottle', value: 'bottle' },
-  { id: 'item-book', slot: 'item', name: 'Spell Book', value: 'book', unlock: { level: 2 } },
-  { id: 'item-brush', slot: 'item', name: 'Paintbrush', value: 'brush', unlock: { coins: 35 } },
-  { id: 'item-wand', slot: 'item', name: 'Star Wand', value: 'wand', unlock: { level: 3 } },
-  { id: 'item-flag', slot: 'item', name: 'Guild Flag', value: 'flag', unlock: { level: 4 } },
+  { id: 'acc-none', slot: 'accessory', name: 'None', value: 'none' },
+  { id: 'acc-headphones', slot: 'accessory', name: 'Tiny Headphones', value: 'headphones' },
+  { id: 'acc-sprout', slot: 'accessory', name: 'Sprout Leaf', value: 'sprout' },
+  { id: 'acc-glasses', slot: 'accessory', name: 'Round Glasses', value: 'glasses' },
+  { id: 'acc-scarf', slot: 'accessory', name: 'Cozy Scarf', value: 'scarf', unlock: { coins: 25 } },
+  { id: 'acc-bow', slot: 'accessory', name: 'Ribbon Bow', value: 'bow', unlock: { coins: 30 } },
+  { id: 'acc-wizard', slot: 'accessory', name: 'Wizard Hat', value: 'wizard', unlock: { level: 3 } },
+  { id: 'acc-crown', slot: 'accessory', name: 'Storm Crown', value: 'crown', unlock: { level: 5 } },
 
   { id: 'title-rookie', slot: 'title', name: 'Rookie' },
   { id: 'title-seeker', slot: 'title', name: 'Quest Seeker', unlock: { level: 2 } },
@@ -175,15 +164,13 @@ export const isOwned = (item, profile) =>
   (item.unlock.level != null && profile.level >= item.unlock.level) ||
   profile.purchased.includes(item.id)
 
-/** Turn equipped item ids into the values the Character renders. */
-export function resolveLook(equipped) {
-  const v = (slot) => ITEM_BY_ID[equipped[slot]]?.value
-  return { color: v('color'), face: v('face'), hat: v('hat'), item: v('item') }
+/** Turn equipped item ids into the companion look (add `level` for the evolution stage). */
+export function resolveLook(equipped, level = 1) {
+  const v = (slot) => ITEM_BY_ID[equipped?.[slot]]?.value
+  return { colorway: v('colorway') ?? 'classic', accessory: v('accessory') ?? 'none', level }
 }
 
-export const DEFAULT_EQUIPPED = {
-  color: 'color-cream', face: 'face-classic', hat: 'hat-none', item: 'item-bat', title: 'title-rookie',
-}
+export const DEFAULT_EQUIPPED = { colorway: 'cw-classic', accessory: 'acc-none', title: 'title-rookie' }
 
 /* ---------- Social / multiplayer ---------- */
 
@@ -204,14 +191,14 @@ export const GROUP_QUESTS = [
 
 /** "Seed 8 sample users": searchable bot profiles that auto-accept friend requests. */
 export const SAMPLE_USERS = [
-  { username: 'Pixel', level: 7, xp: 120, coins: 210, streak: 12, look: { color: '#7dffc0', face: 'happy', hat: 'cap', item: 'flag' } },
-  { username: 'Moonbeam', level: 5, xp: 80, coins: 150, streak: 6, look: { color: '#bba2ff', face: 'star', hat: 'wizard', item: 'wand' } },
-  { username: 'Bolt', level: 4, xp: 60, coins: 95, streak: 3, look: { color: '#7cd3ff', face: 'determined', hat: 'headband', item: 'bottle' } },
-  { username: 'Inky', level: 2, xp: 40, coins: 30, streak: 1, look: { color: '#ff9ccb', face: 'sleepy', hat: 'none', item: 'book' } },
-  { username: 'Sprout', level: 3, xp: 10, coins: 55, streak: 4, look: { color: '#7dffc0', face: 'classic', hat: 'party', item: 'brush' } },
-  { username: 'Nova', level: 6, xp: 150, coins: 180, streak: 9, look: { color: '#ffd23f', face: 'determined', hat: 'crown', item: 'bat' } },
-  { username: 'Juniper', level: 4, xp: 20, coins: 70, streak: 2, look: { color: '#7cd3ff', face: 'star', hat: 'none', item: 'book' } },
-  { username: 'Taco', level: 5, xp: 30, coins: 120, streak: 5, look: { color: '#fff1d6', face: 'happy', hat: 'headband', item: 'wand' } },
+  { username: 'Pixel', level: 7, xp: 120, coins: 210, streak: 12, look: { colorway: 'mint', accessory: 'headphones' }, companion: 'Bloop' },
+  { username: 'Moonbeam', level: 5, xp: 80, coins: 150, streak: 6, look: { colorway: 'grape', accessory: 'wizard' }, companion: 'Nimbus' },
+  { username: 'Bolt', level: 4, xp: 60, coins: 95, streak: 3, look: { colorway: 'classic', accessory: 'scarf' }, companion: 'Zapper' },
+  { username: 'Inky', level: 2, xp: 40, coins: 30, streak: 1, look: { colorway: 'sakura', accessory: 'glasses' }, companion: 'Mochi' },
+  { username: 'Sprout', level: 3, xp: 10, coins: 55, streak: 4, look: { colorway: 'mint', accessory: 'sprout' }, companion: 'Pip' },
+  { username: 'Nova', level: 6, xp: 150, coins: 180, streak: 9, look: { colorway: 'storm', accessory: 'crown' }, companion: 'Blaze' },
+  { username: 'Juniper', level: 4, xp: 20, coins: 70, streak: 2, look: { colorway: 'sky', accessory: 'bow' }, companion: 'Puff' },
+  { username: 'Taco', level: 5, xp: 30, coins: 120, streak: 5, look: { colorway: 'sunset', accessory: 'none' }, companion: 'Nacho' },
 ]
 
 /** Names for extra simulated teammates when the sample bots are busy. */
@@ -229,6 +216,7 @@ export const DEFAULT_PROFILE = {
   streak: 0,
   lastStreakDay: null,
   equipped: DEFAULT_EQUIPPED,
+  companionName: 'Sparky',
   purchased: [],
   quests: [], // attempts: active, completed and failed quests (fresh accounts start empty)
   daily: null, // { date, ids } — rolled on load and at midnight

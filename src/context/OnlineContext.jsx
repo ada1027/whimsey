@@ -43,6 +43,8 @@ export function OnlineProvider({ children }) {
   const [autoQueue, setAutoQueue] = useState(false)
   const [hiddenVoteRound, setHiddenVoteRound] = useState(null)
   const [optimistic, setOptimistic] = useState({}) // `${postId}:${kind}` → reacted?
+  const [invitesSent, setInvitesSent] = useState(() => new Set()) // party invites sent this session
+  const [viewingProfileId, setViewingProfileId] = useState(null) // public profile modal
 
   /* ---------------- loading + realtime ---------------- */
 
@@ -76,7 +78,7 @@ export function OnlineProvider({ children }) {
     const incoming = raw.friendships.filter((f) => f.status === 'pending' && f.friend_id === me).map(withProfile).filter((f) => f.profile)
     const outgoing = raw.friendships.filter((f) => f.status === 'pending' && f.user_id === me).map(withProfile).filter((f) => f.profile)
 
-    const memberView = (m) => ({ ...m, profile: profilesById[m.user_id], look: api.parseAvatar(profilesById[m.user_id]?.avatar).look })
+    const memberView = (m) => ({ ...m, profile: profilesById[m.user_id], look: api.lookOf(profilesById[m.user_id]) })
     let party = null
     if (raw.party) {
       const members = raw.members.map(memberView).filter((m) => m.profile)
@@ -150,10 +152,16 @@ export function OnlineProvider({ children }) {
   }, [])
 
   /** Sample users react to your new post a few seconds later, so the feed feels social while testing. */
-  const cheerFromBots = useCallback((postId) => {
+  const cheerFromBots = useCallback((postId, questTitle) => {
     const bots = Object.values(latest.current.derived?.profilesById ?? {}).filter((p) => p.is_bot).sort(() => Math.random() - 0.5).slice(0, 2)
-    bots.forEach((b, i) => setTimeout(() => api.toggleReaction(postId, b.id, i ? 'gg' : 'hype').catch(() => {}), 3000 + i * 2500 + Math.random() * 1500))
-  }, [])
+    bots.forEach((b, i) => setTimeout(async () => {
+      const kind = i ? 'gg' : 'hype'
+      try {
+        await api.toggleReaction(postId, b.id, kind)
+        await api.notify(me, b.id, 'reaction', { kind, quest_title: questTitle, post_id: postId })
+      } catch { /* ignore */ }
+    }, 3000 + i * 2500 + Math.random() * 1500))
+  }, [me])
 
   const actions = useMemo(() => ({
     refresh,
@@ -163,8 +171,22 @@ export function OnlineProvider({ children }) {
     acceptFriend: (id) => run(() => api.acceptFriendRequest(id)),
     removeFriendship: (id) => run(() => api.removeFriendship(id)),
 
-    invite: (userId) => run(async () => api.addMember(await ensureParty(), userId)),
-    join: (lobby) => run(async () => { await leaveCurrent(); selfAction.current = true; await api.joinParty(lobby.id, me) }),
+    /** Bots join instantly; real friends get a party invite in their notifications. */
+    invite: (userId) => run(async () => {
+      const partyId = await ensureParty()
+      if (latest.current.derived?.profilesById[userId]?.is_bot) return api.addMember(partyId, userId)
+      await api.notify(userId, me, 'party_invite', { party_id: partyId })
+      setInvitesSent((s) => new Set(s).add(userId))
+    }),
+    /** lobby: any object with the party `id` (a joinable lobby, or a party invite's payload). */
+    join: (lobby) => run(async () => {
+      if (latest.current.party?.id === lobby.id) return true
+      await leaveCurrent(); selfAction.current = true; await api.joinParty(lobby.id, me)
+      return true
+    }),
+    markNotificationsRead: () => api.markAllNotificationsRead(me).then(refresh).catch(() => {}),
+    openProfile: (userId) => setViewingProfileId(userId),
+    closeProfile: () => setViewingProfileId(null),
     leave: () => run(leaveCurrent),
     kick: (userId) => run(() => api.kickMember(latest.current.party.id, userId)),
     setReady: (isReady) => run(() => api.setReady(latest.current.party.id, me, isReady)),
@@ -211,10 +233,17 @@ export function OnlineProvider({ children }) {
           toast(`Upload failed (${e.message}) — completed without the photo`, { tone: 'pink', icon: X })
         }
       }
-      if (quest.partyId) await api.submitGroupCompletion(quest.partyId, me, mode, url ?? `local:${file?.name ?? 'proof'}`)
+      if (quest.partyId) {
+        await api.submitGroupCompletion(quest.partyId, me, mode, url ?? `local:${file?.name ?? 'proof'}`)
+        // Tag human teammates when completing together.
+        if (mode === 'together') {
+          const humans = (latest.current.party?.members ?? []).filter((m) => m.user_id !== me && !m.profile.is_bot)
+          await Promise.all(humans.map((m) => api.notify(m.user_id, me, 'group_tag', { quest_title: quest.title, tag: 'together' })))
+        }
+      }
       const post = await publish(me, quest, { proofUrl: url, tag: mode, party: partySnapshot() })
       markPosted(quest.id)
-      if (post) cheerFromBots(post.id)
+      if (post) cheerFromBots(post.id, quest.title)
       return url
     }),
 
@@ -222,7 +251,10 @@ export function OnlineProvider({ children }) {
     toggleReaction: async (post, kind) => {
       const key = `${post.id}:${kind}`
       setOptimistic((o) => ({ ...o, [key]: !post.mine[kind] }))
-      try { await api.toggleReaction(post.id, me, kind) } catch (e) { toast(e.message, { tone: 'pink', icon: X }) }
+      try {
+        await api.toggleReaction(post.id, me, kind)
+        if (!post.mine[kind]) await api.notify(post.user_id, me, 'reaction', { kind, quest_title: post.quest_title, post_id: post.id })
+      } catch (e) { toast(e.message, { tone: 'pink', icon: X }) }
       await refresh()
       setOptimistic((o) => { const { [key]: _, ...rest } = o; return rest })
     },
@@ -235,8 +267,9 @@ export function OnlineProvider({ children }) {
     if (!raw || seededFeed.current) return
     seededFeed.current = true
     const botIds = new Set(raw.profiles.filter((p) => p.is_bot).map((p) => p.id))
-    if (!raw.feed.some((p) => botIds.has(p.user_id))) api.seedSampleFeed().then(refresh).catch(() => {})
-  }, [raw, refresh])
+    const seedFeed = raw.feed.some((p) => botIds.has(p.user_id)) ? Promise.resolve() : api.seedSampleFeed()
+    seedFeed.then(() => (raw.notifications.length ? null : api.seedSampleNotifications(me))).then(refresh).catch(() => {})
+  }, [raw, refresh, me])
 
   /* ---------------- solo auto-queue once bots are ready ---------------- */
 
@@ -374,12 +407,12 @@ export function OnlineProvider({ children }) {
 
   /* ---------------- profile sync: local stats → profiles row ---------------- */
 
-  const { username, level, xp, coins, streak, equipped } = user.profile
+  const { username, level, xp, coins, streak, equipped, companionName } = user.profile
   const meProfile = derived?.meProfile
   const updateLocalProfile = user.updateProfile
   useEffect(() => {
     if (!meProfile) return
-    const avatar = api.encodeAvatar(resolveLook(equipped), equipped)
+    const avatar = api.encodeAvatar(resolveLook(equipped), equipped, companionName)
     const want = { username, level, xp, coins, streak, avatar }
     const patch = Object.fromEntries(Object.entries(want).filter(([k, v]) => meProfile[k] !== v))
     if (!Object.keys(patch).length) return
@@ -392,7 +425,7 @@ export function OnlineProvider({ children }) {
       })
     }, 800)
     return () => clearTimeout(t)
-  }, [username, level, xp, coins, streak, equipped, meProfile, me, toast, updateLocalProfile])
+  }, [username, level, xp, coins, streak, equipped, companionName, meProfile, me, toast, updateLocalProfile])
 
   /* ---------------- presence status + heartbeat ---------------- */
 
@@ -416,11 +449,11 @@ export function OnlineProvider({ children }) {
     const friends = d?.friends ?? []
     const meRow = { id: me, username: user.profile.username, level: user.profile.level, xp: user.profile.xp, look: user.look, me: true }
     const leaderboard = [
-      ...friends.map((f) => ({ id: f.profile.id, username: f.profile.username, level: f.profile.level, xp: f.profile.xp, look: api.parseAvatar(f.profile.avatar).look, bot: f.profile.is_bot })),
+      ...friends.map((f) => ({ id: f.profile.id, username: f.profile.username, level: f.profile.level, xp: f.profile.xp, look: api.lookOf(f.profile), bot: f.profile.is_bot })),
       meRow,
     ].sort((a, b) => b.level - a.level || b.xp - a.xp)
-    const feed = (raw?.feed ?? []).map((post) => {
-      const author = d?.profilesById[post.user_id]
+    const enrichPost = (post) => {
+      const author = d?.profilesById[post.user_id] ?? post.author
       const counts = {}
       const mine = {}
       for (const r of ['hype', 'gg', 'sus']) {
@@ -430,7 +463,9 @@ export function OnlineProvider({ children }) {
         counts[r] = list.length + (opt === undefined ? 0 : opt === list.includes(me) ? 0 : opt ? 1 : -1)
       }
       return { ...post, author, counts, mine, isMine: post.user_id === me }
-    }).filter((p) => p.author)
+    }
+    const feed = (raw?.feed ?? []).map(enrichPost).filter((p) => p.author)
+    const notifications = (raw?.notifications ?? []).map((n) => ({ ...n, actor: d?.profilesById[n.actor_id] ?? null }))
     const relation = (id) =>
       friends.some((f) => f.profile.id === id) ? 'friend'
         : d?.incoming.some((f) => f.profile.id === id) ? 'incoming'
@@ -454,6 +489,11 @@ export function OnlineProvider({ children }) {
       lobbies: d?.lobbies ?? [],
       leaderboard,
       feed,
+      enrichPost,
+      notifications,
+      unreadCount: notifications.filter((n) => !n.read).length,
+      invitesSent,
+      viewingProfileId,
       profilesById: d?.profilesById ?? {},
       rank: leaderboard.findIndex((p) => p.me) + 1,
       searching,
@@ -462,7 +502,7 @@ export function OnlineProvider({ children }) {
       showVote: () => setHiddenVoteRound(null),
       ...actions,
     }
-  }, [derived, raw, optimistic, error, party, searching, hiddenVoteRound, actions, mode, me, user.profile.username, user.profile.level, user.profile.xp, user.look])
+  }, [derived, raw, optimistic, invitesSent, viewingProfileId, error, party, searching, hiddenVoteRound, actions, mode, me, user.profile.username, user.profile.level, user.profile.xp, user.look])
 
   return <OnlineContext.Provider value={value}>{children}</OnlineContext.Provider>
 }

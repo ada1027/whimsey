@@ -1,5 +1,6 @@
 // Game-level operations on top of db.js (works the same in Supabase and local mode).
 import { BOT_NAMES, GROUP_QUESTS, MAX_PARTY_SIZE, MAX_REROLLS, SAMPLE_FEED, SAMPLE_USERS } from '../data/seed.js'
+import { fallbackCompanionName, normalizeLook } from '../data/companion.js'
 import { db } from './db.js'
 
 const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
@@ -7,15 +8,19 @@ const uniq = (xs) => [...new Set(xs)]
 
 /* ---------- avatar encoding ---------- */
 
-/** profiles.avatar stores JSON: { look: {color,face,hat,item}, equipped: {slot: itemId} } */
-export const encodeAvatar = (look, equipped) => JSON.stringify({ look, equipped })
+/** profiles.avatar stores JSON: { look: { colorway, accessory }, equipped: { slot: itemId }, name: companion name } */
+export const encodeAvatar = (look, equipped, name) =>
+  JSON.stringify({ look: { colorway: look.colorway, accessory: look.accessory }, equipped, name })
+
 export function parseAvatar(text) {
-  try {
-    const v = JSON.parse(text)
-    if (v?.look) return v
-  } catch { /* ignore */ }
-  return { look: { color: '#fff1d6', face: 'classic', hat: 'none', item: 'bat' }, equipped: null }
+  let v = null
+  try { v = JSON.parse(text) } catch { /* ignore */ }
+  return { look: normalizeLook(v?.look), equipped: v?.equipped ?? null, name: v?.name || null }
 }
+
+/** Companion look for any profile row, evolved to match their level. */
+export const lookOf = (profile) => ({ ...parseAvatar(profile?.avatar).look, level: profile?.level ?? 1 })
+export const companionNameOf = (profile) => parseAvatar(profile?.avatar).name || fallbackCompanionName(profile?.username)
 
 /* ---------- profiles ---------- */
 
@@ -50,7 +55,7 @@ export async function seedSampleUsers() {
   const have = new Set(existing.map((p) => p.username.toLowerCase()))
   const missing = SAMPLE_USERS.filter((u) => !have.has(u.username.toLowerCase()))
   if (missing.length) {
-    await db.insert('profiles', missing.map(({ look, ...u }) => ({ ...u, avatar: encodeAvatar(look, null), is_bot: true })))
+    await db.insert('profiles', missing.map(({ look, companion, ...u }) => ({ ...u, avatar: encodeAvatar(look, null, companion), is_bot: true })))
   }
   return missing.length
 }
@@ -62,10 +67,16 @@ export async function sendFriendRequest(me, target) {
   const reverse = (await db.select('friendships', { eq: { user_id: target.id, friend_id: me } }))[0]
   if (reverse) return db.update('friendships', { status: 'accepted' }, { eq: { id: reverse.id } })
   // Sample users / bots have nobody to click "accept", so they accept instantly.
-  return db.insert('friendships', { user_id: me, friend_id: target.id, status: target.is_bot ? 'accepted' : 'pending' })
+  const [row] = await db.insert('friendships', { user_id: me, friend_id: target.id, status: target.is_bot ? 'accepted' : 'pending' })
+  if (row?.status === 'pending') await notify(target.id, me, 'friend_request', { friendship_id: row.id })
+  return row
 }
 
-export const acceptFriendRequest = (id) => db.update('friendships', { status: 'accepted' }, { eq: { id } })
+export async function acceptFriendRequest(id) {
+  const [row] = await db.update('friendships', { status: 'accepted' }, { eq: { id } })
+  if (row) await notify(row.user_id, row.friend_id, 'friend_accepted', {})
+  return row
+}
 export const removeFriendship = (id) => db.remove('friendships', { eq: { id } })
 
 /* ---------- loading everything the Social screen needs ---------- */
@@ -96,12 +107,14 @@ export async function loadSocial(me) {
   const bots = await db.select('profiles', { eq: { is_bot: true }, limit: 60 })
   const authors = uniq([me, ...acceptedIds, ...members.map((m) => m.user_id), ...bots.map((b) => b.id)])
   const feed = await loadFeed(authors, 30)
+  const notifications = await loadNotifications(me)
 
-  const ids = uniq([me, ...friendships.map(other), ...members.map((m) => m.user_id), ...lobbyMembers.map((m) => m.user_id)])
+  const ids = uniq([me, ...friendships.map(other), ...members.map((m) => m.user_id), ...lobbyMembers.map((m) => m.user_id),
+    ...feed.map((p) => p.user_id), ...notifications.map((n) => n.actor_id).filter(Boolean)])
   const botIds = new Set(bots.map((b) => b.id))
   const profiles = [...bots, ...(await db.select('profiles', { in: { id: ids.filter((id) => !botIds.has(id)) } }))]
 
-  return { friendships, party, members, lobbies, lobbyMembers, profiles, feed }
+  return { friendships, party, members, lobbies, lobbyMembers, profiles, feed, notifications }
 }
 
 /* ---------- parties ---------- */
@@ -128,8 +141,17 @@ export async function addMember(partyId, userId) {
 }
 
 export async function joinParty(partyId, me) {
+  const party = (await db.select('parties', { eq: { id: partyId } }))[0]
+  if (!party) throw new Error('That party has closed')
+  if (party.status !== 'lobby') throw new Error('That party is already on a quest')
   if ((await memberCount(partyId)) >= MAX_PARTY_SIZE) throw new Error('That party is full')
   await db.insert('party_members', { party_id: partyId, user_id: me, is_ready: false })
+  // Bots never lead: a human joining a bot-hosted lobby takes over as leader.
+  const leader = await getProfile(party.leader_id)
+  if (leader?.is_bot) {
+    await db.update('parties', { leader_id: me }, { eq: { id: partyId } })
+    await db.update('party_members', { is_ready: true }, { eq: { party_id: partyId, user_id: me } })
+  }
 }
 
 /** Leave; if the leader leaves, the next human takes over, or the party closes. */
@@ -153,14 +175,13 @@ export async function addBots(partyId, count) {
   const busy = bots.length ? await db.select('party_members', { in: { user_id: bots.map((b) => b.id) } }) : []
   const busyIds = new Set(busy.map((m) => m.user_id))
   const free = bots.filter((b) => !busyIds.has(b.id)).sort(() => Math.random() - 0.5).slice(0, count)
-  const looks = ['#7dffc0', '#7cd3ff', '#ff9ccb', '#bba2ff', '#ffd23f']
-  const faces = ['classic', 'happy', 'determined', 'star']
-  const hats = ['cap', 'party', 'headband', 'none']
+  const colorways = ['mint', 'sky', 'sakura', 'grape', 'sunset']
+  const accessories = ['headphones', 'sprout', 'glasses', 'none']
   const names = [...BOT_NAMES].sort(() => Math.random() - 0.5)
   while (free.length < count) {
     const i = free.length + Math.floor(Math.random() * 100)
     const name = `${names.pop()}-${Math.random().toString(36).slice(2, 5)}`
-    const look = { color: looks[i % looks.length], face: faces[i % faces.length], hat: hats[i % hats.length], item: 'bottle' }
+    const look = { colorway: colorways[i % colorways.length], accessory: accessories[i % accessories.length] }
     free.push(await createProfile({ username: name, avatar: encodeAvatar(look, null), level: 1 + (i % 6), is_bot: true }))
   }
   await db.insert('party_members', free.map((b) => ({ party_id: partyId, user_id: b.id, is_ready: false })))
@@ -273,4 +294,56 @@ export async function seedSampleFeed() {
     created_at: new Date(Date.now() - p.ago * 60_000).toISOString(),
   }))
   return (await db.insertIgnore('quest_feed', rows, 'user_id,quest_ref')).length
+}
+
+/** All of one adventurer's posts, for their profile grid. */
+export const loadUserPosts = (userId, limit = 60) =>
+  db.select('quest_feed', { eq: { user_id: userId }, order: ['created_at', { ascending: false }], limit })
+
+/* ---------- notifications ---------- */
+
+/**
+ * type: 'reaction' | 'group_tag' | 'friend_request' | 'friend_accepted' | 'party_invite'
+ * payload examples: { kind, quest_title, post_id } · { quest_title } · { friendship_id } · { party_id }
+ */
+export function notify(userId, actorId, type, payload = {}) {
+  if (!userId || userId === actorId) return Promise.resolve()
+  return db.insert('notifications', { user_id: userId, actor_id: actorId, type, payload, read: false })
+}
+
+export const loadNotifications = (me) =>
+  db.select('notifications', { eq: { user_id: me }, order: ['created_at', { ascending: false }], limit: 40 })
+
+export const markAllNotificationsRead = (me) => db.update('notifications', { read: true }, { eq: { user_id: me, read: false } })
+
+/**
+ * First-run sample inbox: a reaction, a "Done Together" tag, a real friend request you can accept,
+ * and a party invite into a sample lobby you can join.
+ */
+export async function seedSampleNotifications(me) {
+  if ((await db.select('notifications', { eq: { user_id: me }, limit: 1 })).length) return 0
+  await seedSampleUsers()
+  const users = await db.select('profiles', { in: { username: ['Moonbeam', 'Pixel', 'Juniper', 'Bolt'] } })
+  const u = Object.fromEntries(users.map((x) => [x.username, x]))
+  const ago = (m) => new Date(Date.now() - m * 60_000).toISOString()
+  const rows = []
+
+  if (u.Bolt) {
+    // Bolt hosts an open lobby (if he isn't already in one).
+    const inParty = (await db.select('party_members', { eq: { user_id: u.Bolt.id } }))[0]
+    const partyId = inParty?.party_id ?? (await createParty(u.Bolt.id)).id
+    rows.push({ user_id: me, actor_id: u.Bolt.id, type: 'party_invite', payload: { party_id: partyId }, created_at: ago(2) })
+  }
+  if (u.Moonbeam) rows.push({ user_id: me, actor_id: u.Moonbeam.id, type: 'reaction', payload: { kind: 'hype', quest_title: 'Mood Doodle' }, created_at: ago(6) })
+  if (u.Pixel) rows.push({ user_id: me, actor_id: u.Pixel.id, type: 'group_tag', payload: { quest_title: 'Campus Coffee Run', tag: 'together' }, created_at: ago(25) })
+  if (u.Juniper) {
+    const existing = [
+      ...(await db.select('friendships', { eq: { user_id: u.Juniper.id, friend_id: me } })),
+      ...(await db.select('friendships', { eq: { user_id: me, friend_id: u.Juniper.id } })),
+    ]
+    const fs = existing[0] ?? (await db.insert('friendships', { user_id: u.Juniper.id, friend_id: me, status: 'pending' }))[0]
+    if (fs.status === 'pending') rows.push({ user_id: me, actor_id: u.Juniper.id, type: 'friend_request', payload: { friendship_id: fs.id }, created_at: ago(40) })
+  }
+  if (rows.length) await db.insert('notifications', rows.map((r) => ({ ...r, read: false })))
+  return rows.length
 }

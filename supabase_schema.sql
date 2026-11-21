@@ -86,6 +86,18 @@ create table if not exists public.quest_feed (
 );
 create index if not exists quest_feed_user_created_idx on public.quest_feed (user_id, created_at desc);
 
+-- Notification bell inbox (written by the acting player's app)
+create table if not exists public.notifications (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles (id) on delete cascade, -- recipient
+  actor_id    uuid references public.profiles (id) on delete cascade,          -- who did it
+  type        text not null check (type in ('reaction', 'group_tag', 'friend_request', 'friend_accepted', 'party_invite')),
+  payload     jsonb not null default '{}'::jsonb,  -- e.g. { kind, quest_title, post_id } · { friendship_id } · { party_id }
+  read        boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+create index if not exists notifications_user_created_idx on public.notifications (user_id, created_at desc);
+
 -- ---------------------------------------------------------------------
 -- Keep updated_at fresh (also used as a "last seen" heartbeat)
 -- ---------------------------------------------------------------------
@@ -164,11 +176,12 @@ alter table public.friendships   enable row level security;
 alter table public.parties       enable row level security;
 alter table public.party_members enable row level security;
 alter table public.quest_feed    enable row level security;
+alter table public.notifications enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles', 'friendships', 'parties', 'party_members', 'quest_feed'] loop
+  foreach t in array array['profiles', 'friendships', 'parties', 'party_members', 'quest_feed', 'notifications'] loop
     execute format('drop policy if exists "prototype open access" on public.%I', t);
     execute format(
       'create policy "prototype open access" on public.%I for all to anon, authenticated using (true) with check (true)', t);
@@ -176,7 +189,7 @@ begin
 end $$;
 
 grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on public.profiles, public.friendships, public.parties, public.party_members, public.quest_feed
+grant select, insert, update, delete on public.profiles, public.friendships, public.parties, public.party_members, public.quest_feed, public.notifications
   to anon, authenticated;
 
 -- ---------------------------------------------------------------------
@@ -188,6 +201,7 @@ alter table public.friendships   replica identity full;
 alter table public.parties       replica identity full;
 alter table public.party_members replica identity full;
 alter table public.quest_feed    replica identity full;
+alter table public.notifications replica identity full;
 
 do $$
 declare t text;
@@ -195,7 +209,7 @@ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
   end if;
-  foreach t in array array['profiles', 'friendships', 'parties', 'party_members', 'quest_feed'] loop
+  foreach t in array array['profiles', 'friendships', 'parties', 'party_members', 'quest_feed', 'notifications'] loop
     if not exists (
       select 1 from pg_publication_tables
        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

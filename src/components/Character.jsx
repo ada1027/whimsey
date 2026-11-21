@@ -1,110 +1,220 @@
-// The player's character, drawn in SVG from a "look": { color, face, hat, item }.
-// Shape follows the WHIMSEY wireframe: tall rounded block body, big eyes, held gear.
+// Baby Thunderbird companion (original SVG). Evolves with level:
+//   Lv 1–2 Hatchling (thunder-egg) · Lv 3–4 Fledgling (chubby chick) · Lv 5+ Stormbird.
+// look: { colorway, accessory, level } — older looks are normalized automatically.
+
+import { COLORWAYS, normalizeLook, stageFor } from '../data/companion.js'
 
 const O = '#140c2c' // outline
-const SW = 5 // stroke width
+const SW = 5
 
-const star = (cx, cy, r, inner = r * 0.45) =>
-  Array.from({ length: 10 }, (_, i) => {
-    const a = (Math.PI / 5) * i - Math.PI / 2
-    const rr = i % 2 ? inner : r
-    return `${cx + rr * Math.cos(a)},${cy + rr * Math.sin(a)}`
-  }).join(' ')
+const sparkPath = (cx, cy, s) =>
+  `M${cx} ${cy - s} L${cx + s * 0.3} ${cy - s * 0.3} L${cx + s} ${cy} L${cx + s * 0.3} ${cy + s * 0.3} L${cx} ${cy + s} L${cx - s * 0.3} ${cy + s * 0.3} L${cx - s} ${cy} L${cx - s * 0.3} ${cy - s * 0.3} Z`
 
-function Face({ face }) {
-  const eye = (cx) => (
-    <g key={cx}>
-      <ellipse cx={cx} cy={82} rx={11} ry={13} fill="#fff" stroke={O} strokeWidth={4} />
-      <circle cx={cx + 2} cy={84} r={5.5} fill={O} />
-      <circle cx={cx + 4} cy={81} r={1.8} fill="#fff" />
-    </g>
+/** Small lightning bolt with its top at (x, y). */
+function Bolt({ x, y, s = 1, fill, stroke = O }) {
+  return (
+    <polygon
+      points="0,0 11,0 5,11 13,11 -3,31 2,16 -6,16"
+      transform={`translate(${x} ${y}) scale(${s})`}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={3 / s}
+      strokeLinejoin="round"
+    />
   )
-  switch (face) {
-    case 'happy':
-      return (
-        <g>
-          <path d="M74 86 Q84 72 94 86 M106 86 Q116 72 126 86" fill="none" stroke={O} strokeWidth={SW} strokeLinecap="round" />
-          <circle cx={72} cy={100} r={6} fill="#ff7aa8" opacity={0.6} />
-          <circle cx={128} cy={100} r={6} fill="#ff7aa8" opacity={0.6} />
-          <path d="M82 102 Q100 128 118 102 Z" fill="#ff5a8a" stroke={O} strokeWidth={4} strokeLinejoin="round" />
-        </g>
-      )
-    case 'determined':
-      return (
-        <g>
-          {[84, 116].map(eye)}
-          <path d="M72 66 L95 73 M128 66 L105 73" stroke={O} strokeWidth={SW + 1} strokeLinecap="round" />
-          <path d="M86 111 Q100 106 114 111" fill="none" stroke={O} strokeWidth={SW} strokeLinecap="round" />
-        </g>
-      )
-    case 'sleepy':
-      return (
-        <g>
-          <path d="M74 84 Q84 92 94 84 M106 84 Q116 92 126 84" fill="none" stroke={O} strokeWidth={SW} strokeLinecap="round" />
-          <ellipse cx={100} cy={112} rx={5} ry={6} fill="#ff5a8a" stroke={O} strokeWidth={3.5} />
-          <text x={132} y={66} fontFamily="Lilita One, sans-serif" fontSize={16} fill={O}>z</text>
-        </g>
-      )
-    case 'star':
-      return (
-        <g>
-          <polygon points={star(84, 82, 14)} fill="#ffc928" stroke={O} strokeWidth={3.5} strokeLinejoin="round" />
-          <polygon points={star(116, 82, 14)} fill="#ffc928" stroke={O} strokeWidth={3.5} strokeLinejoin="round" />
-          <path d="M80 104 Q100 126 120 104 Z" fill="#ff5a8a" stroke={O} strokeWidth={4} strokeLinejoin="round" />
-        </g>
-      )
-    default: // classic
-      return (
-        <g>
-          {[84, 116].map(eye)}
-          <path d="M84 106 Q100 120 116 106" fill="none" stroke={O} strokeWidth={SW} strokeLinecap="round" />
-        </g>
-      )
-  }
 }
 
-function Hat({ hat }) {
-  const p = { stroke: O, strokeWidth: SW, strokeLinejoin: 'round' }
-  switch (hat) {
-    case 'cap':
+function Eyes({ y, dx = 17, size = 9, mood }) {
+  return [100 - dx, 100 + dx].map((cx) =>
+    mood === 'cheer' ? (
+      <path key={cx} d={`M${cx - 8} ${y + 3} Q${cx} ${y - 8} ${cx + 8} ${y + 3}`} fill="none" stroke={O} strokeWidth={5} strokeLinecap="round" />
+    ) : (
+      <g key={cx}>
+        <ellipse cx={cx} cy={y} rx={size} ry={size * 1.2} fill={O} />
+        <circle cx={cx + size * 0.35} cy={y - size * 0.45} r={size * 0.38} fill="#fff" />
+        <circle cx={cx - size * 0.35} cy={y + size * 0.45} r={size * 0.18} fill="#fff" />
+      </g>
+    ),
+  )
+}
+
+function Cheeks({ y, dx = 34, spark, accent }) {
+  return [100 - dx, 100 + dx].map((cx) => (
+    <g key={cx}>
+      <ellipse cx={cx} cy={y} rx={8} ry={5} fill="#ff6f9f" opacity={0.45} />
+      {spark && <path d={sparkPath(cx, y - 1, 6)} fill={accent} stroke={O} strokeWidth={1.8} strokeLinejoin="round" />}
+    </g>
+  ))
+}
+
+function Sparkles({ c }) {
+  return (
+    <g>
+      <path d={sparkPath(34, 64, 9)} fill={c.accent} stroke={O} strokeWidth={2.5} />
+      <path d={sparkPath(168, 78, 7)} fill="#fff" stroke={O} strokeWidth={2.5} />
+      <path d={sparkPath(160, 38, 5)} fill={c.accent} stroke={O} strokeWidth={2} />
+    </g>
+  )
+}
+
+function GalaxyDots({ points }) {
+  return points.map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill="#fff" opacity={0.85} />)
+}
+
+/* ---------------- stages ---------------- */
+
+function Hatchling({ c, mood }) {
+  return (
+    <>
+      {/* chick peeking out */}
+      <circle cx={100} cy={100} r={44} fill={c.body} stroke={O} strokeWidth={SW} />
+      <Eyes y={96} dx={16} size={8.5} mood={mood} />
+      <path d="M93 107 L107 107 L100 115 Z" fill={c.beak} stroke={O} strokeWidth={3} strokeLinejoin="round" />
+      <Cheeks y={108} dx={30} />
+      {/* lower shell */}
+      <path
+        d="M40 128 L54 116 L66 128 L80 115 L93 128 L107 115 L120 128 L134 115 L146 128 L160 117 C164 160 136 186 100 186 C64 186 36 160 40 128 Z"
+        fill={c.dark} stroke={O} strokeWidth={SW} strokeLinejoin="round"
+      />
+      <path d="M48 152 L62 142 L76 154 L90 142 L100 152 L112 142 L126 154 L140 142 L152 152" fill="none" stroke={c.accent} strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
+      {/* lightning tuft poking out */}
+      <Bolt x={138} y={34} s={0.95} fill={c.accent} />
+      {/* lifted top shell */}
+      <g transform={`translate(-4 ${mood === 'cheer' ? -18 : -10}) rotate(${mood === 'cheer' ? -24 : -16} 100 60)`}>
+        <path
+          d="M54 72 L66 82 L78 70 L90 82 L102 70 L114 82 L126 70 L140 80 C142 46 124 24 98 26 C72 28 52 46 54 72 Z"
+          fill={c.dark} stroke={O} strokeWidth={SW} strokeLinejoin="round"
+        />
+        <path d="M78 46 Q86 38 96 38" fill="none" stroke="#fff" strokeWidth={4} strokeLinecap="round" opacity={0.5} />
+        <Bolt x={106} y={38} s={0.6} fill={c.accent} />
+      </g>
+    </>
+  )
+}
+
+function Fledgling({ c, mood }) {
+  const up = mood === 'cheer'
+  return (
+    <>
+      {[84, 116].map((x) => <ellipse key={x} cx={x} cy={178} rx={11} ry={6} fill={c.beak} stroke={O} strokeWidth={4} />)}
+      {/* lightning feather tuft */}
+      <path d="M86 70 L84 36 L96 50 L101 22 L108 50 L120 34 L116 70 Z" fill={c.accent} stroke={O} strokeWidth={4} strokeLinejoin="round" />
+      {/* stubby wings */}
+      <ellipse cx={46} cy={124} rx={15} ry={25} fill={c.dark} stroke={O} strokeWidth={SW} transform={`rotate(${up ? 55 : 22} 52 112)`} />
+      <ellipse cx={154} cy={124} rx={15} ry={25} fill={c.dark} stroke={O} strokeWidth={SW} transform={`rotate(${up ? -55 : -22} 148 112)`} />
+      <ellipse cx={100} cy={118} rx={58} ry={58} fill={c.body} stroke={O} strokeWidth={SW} />
+      <ellipse cx={100} cy={142} rx={36} ry={28} fill={c.belly} />
+      <path d="M66 82 Q74 70 88 68" fill="none" stroke="#fff" strokeWidth={5} strokeLinecap="round" opacity={0.45} />
+      <Eyes y={100} dx={18} size={9.5} mood={mood} />
+      <path d="M90 116 Q100 108 110 116 Q100 129 90 116 Z" fill={c.beak} stroke={O} strokeWidth={3.5} strokeLinejoin="round" />
+      <Cheeks y={121} dx={36} spark accent={c.accent} />
+    </>
+  )
+}
+
+function Stormbird({ c, mood }) {
+  const up = mood === 'cheer'
+  const wing = (
+    <g transform={up ? 'rotate(-22 58 104)' : undefined}>
+      <path
+        d="M60 106 C34 96 14 72 8 46 C24 56 32 56 40 52 C34 66 38 74 47 78 C42 86 46 96 60 100 Z"
+        fill={c.dark} stroke={O} strokeWidth={SW} strokeLinejoin="round"
+      />
+      <path d="M12 52 C20 58 30 58 38 54" fill="none" stroke={c.accent} strokeWidth={4} strokeLinecap="round" />
+    </g>
+  )
+  return (
+    <>
+      {/* lightning aura */}
+      <g className="animate-pulse">
+        <Bolt x={24} y={118} s={0.8} fill={c.accent} />
+        <Bolt x={174} y={118} s={0.8} fill={c.accent} />
+        <Bolt x={30} y={18} s={0.55} fill={c.accent} />
+        <Bolt x={170} y={14} s={0.55} fill={c.accent} />
+      </g>
+      {[84, 116].map((x) => <ellipse key={x} cx={x} cy={184} rx={12} ry={6} fill={c.beak} stroke={O} strokeWidth={4} />)}
+      {/* glowing crest */}
+      <path d="M84 62 L72 20 L92 42 L100 6 L108 42 L128 20 L116 62 Z" fill="none" stroke={c.accent} strokeWidth={14} strokeLinejoin="round" opacity={0.35} />
+      <path d="M84 62 L72 20 L92 42 L100 6 L108 42 L128 20 L116 62 Z" fill={c.accent} stroke={O} strokeWidth={4.5} strokeLinejoin="round" />
+      {wing}
+      <g transform="translate(200 0) scale(-1 1)">{wing}</g>
+      <path d="M100 52 C140 52 156 90 154 122 C152 160 130 184 100 184 C70 184 48 160 46 122 C44 90 60 52 100 52 Z" fill={c.body} stroke={O} strokeWidth={SW} />
+      <ellipse cx={100} cy={146} rx={32} ry={30} fill={c.belly} />
+      <path d="M85 124 L100 136 L115 124" fill="none" stroke={c.accent} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M68 76 Q76 64 90 62" fill="none" stroke="#fff" strokeWidth={5} strokeLinecap="round" opacity={0.45} />
+      <Eyes y={92} dx={16} size={9.5} mood={mood} />
+      {mood !== 'cheer' && <path d="M74 76 L90 80 M126 76 L110 80" stroke={O} strokeWidth={4} strokeLinecap="round" />}
+      <path d="M88 108 Q100 100 112 108 Q104 116 100 124 Q96 116 88 108 Z" fill={c.beak} stroke={O} strokeWidth={3.5} strokeLinejoin="round" />
+      <Cheeks y={113} dx={36} spark accent={c.accent} />
+    </>
+  )
+}
+
+/* ---------------- accessories ---------------- */
+
+// Where things sit on each stage.
+const ANCHOR = {
+  hatchling: { top: 30, eyeY: 96, dx: 16, hw: 46, scarfY: 124, scarfW: 50 },
+  fledgling: { top: 64, eyeY: 100, dx: 18, hw: 57, scarfY: 134, scarfW: 46 },
+  stormbird: { top: 58, eyeY: 92, dx: 16, hw: 52, scarfY: 128, scarfW: 44 },
+}
+
+function Accessory({ kind, stage }) {
+  const a = ANCHOR[stage]
+  const cx = 100
+  switch (kind) {
+    case 'headphones':
       return (
         <g>
-          <path d="M60 52 Q60 16 100 16 Q140 16 140 52 Z" fill="#ff3d8b" {...p} />
-          <rect x={118} y={44} width={46} height={12} rx={6} fill="#ff3d8b" {...p} />
-          <circle cx={100} cy={16} r={5} fill="#ffc928" {...p} strokeWidth={3} />
+          <path d={`M${cx - a.hw} ${a.eyeY} C${cx - a.hw} ${a.top - 26} ${cx + a.hw} ${a.top - 26} ${cx + a.hw} ${a.eyeY}`} fill="none" stroke={O} strokeWidth={11} strokeLinecap="round" />
+          <path d={`M${cx - a.hw} ${a.eyeY} C${cx - a.hw} ${a.top - 26} ${cx + a.hw} ${a.top - 26} ${cx + a.hw} ${a.eyeY}`} fill="none" stroke="#ff5c9a" strokeWidth={5} strokeLinecap="round" />
+          {[cx - a.hw - 8, cx + a.hw - 8].map((x) => <rect key={x} x={x} y={a.eyeY - 14} width={16} height={28} rx={7} fill="#ff5c9a" stroke={O} strokeWidth={4} />)}
         </g>
       )
-    case 'headband':
+    case 'sprout':
       return (
         <g>
-          <path d="M144 54 L166 42 L160 60 L168 74 Z" fill="#ff3d8b" {...p} strokeWidth={4} />
-          <rect x={55} y={48} width={90} height={14} rx={4} fill="#ff3d8b" {...p} />
-          <polygon points={star(100, 55, 6)} fill="#fff" />
+          <path d={`M${cx} ${a.top + 6} Q${cx - 3} ${a.top - 10} ${cx + 2} ${a.top - 22}`} fill="none" stroke={O} strokeWidth={7} strokeLinecap="round" />
+          <path d={`M${cx} ${a.top + 6} Q${cx - 3} ${a.top - 10} ${cx + 2} ${a.top - 22}`} fill="none" stroke="#3ccf7a" strokeWidth={3} strokeLinecap="round" />
+          <ellipse cx={cx - 11} cy={a.top - 24} rx={12} ry={6.5} fill="#5be08f" stroke={O} strokeWidth={3.5} transform={`rotate(-28 ${cx - 11} ${a.top - 24})`} />
+          <ellipse cx={cx + 13} cy={a.top - 26} rx={12} ry={6.5} fill="#5be08f" stroke={O} strokeWidth={3.5} transform={`rotate(28 ${cx + 13} ${a.top - 26})`} />
         </g>
       )
-    case 'party':
+    case 'glasses':
       return (
         <g>
-          <path d="M78 46 L100 -14 L122 46 Z" fill="#2fb4ff" {...p} />
-          <path d="M86 26 L114 26 M93 8 L107 8" stroke="#fff" strokeWidth={5} />
-          <circle cx={100} cy={-16} r={8} fill="#ffc928" {...p} strokeWidth={4} />
+          {[cx - a.dx, cx + a.dx].map((x) => <circle key={x} cx={x} cy={a.eyeY} r={13} fill="#fff" fillOpacity={0.18} stroke={O} strokeWidth={4} />)}
+          <path d={`M${cx - a.dx + 13} ${a.eyeY} Q${cx} ${a.eyeY - 6} ${cx + a.dx - 13} ${a.eyeY}`} fill="none" stroke={O} strokeWidth={4} />
+        </g>
+      )
+    case 'scarf':
+      return (
+        <g>
+          <rect x={cx + a.scarfW * 0.35} y={a.scarfY} width={15} height={34} rx={6} fill="#ff4d6d" stroke={O} strokeWidth={4} transform={`rotate(-12 ${cx + a.scarfW * 0.35} ${a.scarfY})`} />
+          <rect x={cx - a.scarfW} y={a.scarfY - 9} width={a.scarfW * 2} height={18} rx={9} fill="#ff4d6d" stroke={O} strokeWidth={4} />
+          {[-0.45, 0, 0.45].map((f) => <path key={f} d={`M${cx + f * a.scarfW} ${a.scarfY - 7} L${cx + f * a.scarfW + 5} ${a.scarfY + 7}`} stroke="#fff" strokeWidth={3} opacity={0.75} />)}
         </g>
       )
     case 'wizard':
       return (
         <g>
-          <path d="M66 44 L104 -22 L134 44 Z" fill="#8b5cff" {...p} />
-          <ellipse cx={100} cy={46} rx={52} ry={9} fill="#8b5cff" {...p} />
-          <polygon points={star(102, 18, 9)} fill="#ffc928" />
+          <path d={`M${cx - 32} ${a.top + 4} L${cx + 10} ${a.top - 58} L${cx + 32} ${a.top + 4} Z`} fill="#7c4dff" stroke={O} strokeWidth={4.5} strokeLinejoin="round" />
+          <ellipse cx={cx} cy={a.top + 4} rx={42} ry={8} fill="#7c4dff" stroke={O} strokeWidth={4.5} />
+          <path d={sparkPath(cx + 4, a.top - 22, 7)} fill="#ffc928" />
+        </g>
+      )
+    case 'bow':
+      return (
+        <g transform={`translate(${cx + 24} ${a.top + 4}) rotate(18)`}>
+          <path d="M0 0 L-18 -11 L-18 11 Z M0 0 L18 -11 L18 11 Z" fill="#ff5c9a" stroke={O} strokeWidth={4} strokeLinejoin="round" />
+          <circle r={5.5} fill="#ff86b4" stroke={O} strokeWidth={3.5} />
         </g>
       )
     case 'crown':
       return (
         <g>
-          <path d="M64 46 L62 10 L82 28 L100 2 L118 28 L138 10 L136 46 Z" fill="#ffc928" {...p} />
-          <circle cx={100} cy={34} r={6} fill="#ff3d8b" stroke={O} strokeWidth={3} />
-          <circle cx={78} cy={36} r={4} fill="#2fb4ff" stroke={O} strokeWidth={3} />
-          <circle cx={122} cy={36} r={4} fill="#3dff8f" stroke={O} strokeWidth={3} />
+          <path d={`M${cx - 26} ${a.top + 4} L${cx - 29} ${a.top - 22} L${cx - 13} ${a.top - 8} L${cx} ${a.top - 30} L${cx + 13} ${a.top - 8} L${cx + 29} ${a.top - 22} L${cx + 26} ${a.top + 4} Z`} fill="#ffc928" stroke={O} strokeWidth={4.5} strokeLinejoin="round" />
+          <circle cx={cx} cy={a.top - 6} r={4.5} fill="#ff3d8b" stroke={O} strokeWidth={2.5} />
         </g>
       )
     default:
@@ -112,107 +222,45 @@ function Hat({ hat }) {
   }
 }
 
-/** Gear drawn with its grip at (0,0), extending upward. */
-export function Gear({ item }) {
-  const p = { stroke: O, strokeWidth: 4.5, strokeLinejoin: 'round', strokeLinecap: 'round' }
-  switch (item) {
-    case 'bat':
-      return (
-        <g transform="rotate(18)">
-          <path d="M-4 4 L-3 -26 Q-11 -64 -7 -84 Q0 -92 7 -84 Q11 -64 3 -26 L4 4 Z" fill="#d79a5b" {...p} />
-          <path d="M-5 -14 L5 -14 M-5 -6 L5 -6" stroke={O} strokeWidth={3} />
-        </g>
-      )
-    case 'bottle':
-      return (
-        <g>
-          <rect x={-12} y={-50} width={24} height={50} rx={7} fill="#2fb4ff" {...p} />
-          <rect x={-7} y={-60} width={14} height={11} rx={3} fill="#ff3d8b" {...p} />
-          <path d="M-6 -36 L-6 -14" stroke="#fff" strokeWidth={4} strokeLinecap="round" opacity={0.7} />
-        </g>
-      )
-    case 'book':
-      return (
-        <g transform="rotate(-8)">
-          <rect x={-18} y={-44} width={36} height={44} rx={4} fill="#ff3d8b" {...p} />
-          <path d="M-10 -44 L-10 0" stroke={O} strokeWidth={4} />
-          <polygon points={star(4, -22, 8)} fill="#ffc928" />
-        </g>
-      )
-    case 'brush':
-      return (
-        <g transform="rotate(14)">
-          <path d="M0 4 L0 -44" stroke={O} strokeWidth={10} strokeLinecap="round" />
-          <path d="M0 4 L0 -44" stroke="#d79a5b" strokeWidth={5} strokeLinecap="round" />
-          <rect x={-6} y={-56} width={12} height={12} rx={2} fill="#c9c9d9" {...p} strokeWidth={3.5} />
-          <path d="M-6 -56 Q0 -84 6 -56 Z" fill="#3dff8f" {...p} strokeWidth={3.5} />
-        </g>
-      )
-    case 'wand':
-      return (
-        <g transform="rotate(10)">
-          <path d="M0 4 L0 -56" stroke={O} strokeWidth={10} strokeLinecap="round" />
-          <path d="M0 4 L0 -56" stroke="#8b5cff" strokeWidth={5} strokeLinecap="round" />
-          <polygon points={star(0, -68, 16)} fill="#ffc928" stroke={O} strokeWidth={4} strokeLinejoin="round" />
-        </g>
-      )
-    case 'flag':
-      return (
-        <g>
-          <path d="M0 6 L0 -84" stroke={O} strokeWidth={9} strokeLinecap="round" />
-          <path d="M0 6 L0 -84" stroke="#e6e1ff" strokeWidth={4} strokeLinecap="round" />
-          <path d="M2 -84 L46 -72 L2 -58 Z" fill="#3dff8f" {...p} />
-        </g>
-      )
-    default:
-      return null
-  }
+// full leaves headroom for tall hats; head crops frame the face for avatars
+const VIEWBOX = {
+  full: '0 -24 200 224',
+  hatchling: '26 4 148 148',
+  fledgling: '26 12 148 148',
+  stormbird: '24 -2 152 152',
+}
+
+const GALAXY = {
+  hatchling: [[62, 160, 2.2], [118, 168, 1.6], [140, 150, 2]],
+  fledgling: [[64, 96, 2.2], [138, 92, 1.8], [56, 132, 1.5], [146, 136, 2]],
+  stormbird: [[66, 100, 2], [136, 96, 1.8], [60, 150, 1.6], [142, 152, 2]],
 }
 
 /**
- * @param look   { color, face, hat, item }
- * @param crop   'full' (whole body) | 'head' (avatar icon)
+ * @param look  { colorway, accessory, level }
+ * @param crop  'full' | 'head' (avatar icon)
+ * @param mood  'happy' | 'cheer' (closed happy eyes, wings up, sparkles)
  */
-export default function Character({ look, crop = 'full', className = '', label }) {
-  const { color = '#fff1d6', face = 'classic', hat = 'none', item = 'bat' } = look ?? {}
+export default function Character({ look, crop = 'full', mood = 'happy', className = '', label }) {
+  const l = normalizeLook(look)
+  const stage = stageFor(l.level)
+  const c = COLORWAYS[l.colorway]
+  const Body = { hatchling: Hatchling, fledgling: Fledgling, stormbird: Stormbird }[stage]
   const full = crop === 'full'
-  const viewBox = full ? '0 -30 200 290' : '30 -24 140 140'
-  const limb = { stroke: O, strokeWidth: SW + 1, strokeLinecap: 'round', fill: 'none' }
 
   return (
-    <svg viewBox={viewBox} className={className} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
-      {!full && <rect x={30} y={-24} width={140} height={140} fill="transparent" />}
-      {full && (
-        <>
-          <ellipse cx={100} cy={250} rx={58} ry={9} fill="rgb(0 0 0 / .28)" />
-          <path d="M84 192 L79 238 M116 192 L121 238" {...limb} />
-          <ellipse cx={73} cy={241} rx={13} ry={7} fill={O} />
-          <ellipse cx={127} cy={241} rx={13} ry={7} fill={O} />
-          <path d="M60 120 Q40 142 38 170" {...limb} />
-          <circle cx={38} cy={172} r={8} fill={color} stroke={O} strokeWidth={4} />
-        </>
-      )}
-      <rect x={58} y={38} width={84} height={160} rx={24} fill={color} stroke={O} strokeWidth={SW + 1} />
-      {/* soft highlight for a toy-like finish */}
-      <path d="M70 60 Q70 46 84 46" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.6} />
-      <Face face={face} />
-      <Hat hat={hat} />
-      {full && (
-        <>
-          <path d="M140 120 Q160 136 162 160" {...limb} />
-          <g transform="translate(162 164)"><Gear item={item} /></g>
-          <circle cx={162} cy={164} r={8} fill={color} stroke={O} strokeWidth={4} />
-        </>
-      )}
-    </svg>
-  )
-}
-
-/** Standalone gear icon for locker tiles. */
-export function GearIcon({ item, className = '' }) {
-  return (
-    <svg viewBox="-40 -100 80 112" className={className} aria-hidden>
-      <Gear item={item} />
+    <svg
+      viewBox={full ? VIEWBOX.full : VIEWBOX[stage]}
+      className={className}
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+    >
+      {full && <ellipse cx={100} cy={192} rx={52} ry={7} fill="rgb(0 0 0 / .25)" />}
+      <Body c={c} mood={mood} />
+      {l.colorway === 'galaxy' && <GalaxyDots points={GALAXY[stage]} />}
+      <Accessory kind={l.accessory} stage={stage} />
+      {mood === 'cheer' && full && <Sparkles c={c} />}
     </svg>
   )
 }

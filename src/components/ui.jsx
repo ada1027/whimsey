@@ -67,7 +67,7 @@ export function PageTitle({ children, subtitle, action }) {
 }
 
 /** Accessible modal that slides up as a bottom sheet inside the phone screen. */
-export function Modal({ onClose, title, eyebrow, children, dismissable = true, className = '' }) {
+export function Modal({ onClose, title, eyebrow, children, dismissable = true, className = '', z = 'z-50', headerAction }) {
   const titleId = useId()
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export function Modal({ onClose, title, eyebrow, children, dismissable = true, c
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-[#05020f]/70 backdrop-blur-sm"
+      className={`fixed inset-0 ${z} grid place-items-end bg-[#05020f]/70 backdrop-blur-sm`}
       onClick={() => dismissable && onClose()}
     >
       <div
@@ -93,9 +93,12 @@ export function Modal({ onClose, title, eyebrow, children, dismissable = true, c
             {eyebrow && <p className="font-display text-sm uppercase tracking-widest text-muted">{eyebrow}</p>}
             <h2 id={titleId} className="font-display text-2xl uppercase leading-tight">{title}</h2>
           </div>
-          <button onClick={onClose} disabled={!dismissable} className="btn btn-ghost size-10 shrink-0 rounded-xl" aria-label="Close">
-            <X size={18} strokeWidth={3} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {headerAction}
+            <button onClick={onClose} disabled={!dismissable} className="btn btn-ghost size-10 shrink-0 rounded-xl" aria-label="Close">
+              <X size={18} strokeWidth={3} />
+            </button>
+          </div>
         </div>
         {children}
       </div>

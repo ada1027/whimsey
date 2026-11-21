@@ -78,7 +78,7 @@ export default function LoginScreen() {
                 <button key={p.id} type="button" disabled={busy} onClick={() => go(p.username)}
                   className="pill rounded-xl bg-surface-2 py-1 pl-1 pr-2.5 text-sm normal-case tracking-normal text-ink">
                   <span className="stage size-6 overflow-hidden rounded-md border-2 border-outline">
-                    <Character look={api.parseAvatar(p.avatar).look} crop="head" className="size-full" />
+                    <Character look={api.lookOf(p)} crop="head" className="size-full" />
                   </span>
                   {p.username} <span className="text-muted">LV {p.level}</span>
                 </button>

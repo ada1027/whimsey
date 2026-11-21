@@ -2,7 +2,8 @@ import { Coins, Crown, Sparkles, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useUser } from '../context/UserContext.jsx'
 import { ITEMS } from '../data/seed.js'
-import Character, { GearIcon } from './Character.jsx'
+import { STAGES, stageFor } from '../data/companion.js'
+import Character from './Character.jsx'
 
 const COLORS = ['#ffc928', '#ff3d8b', '#2fb4ff', '#3dff8f', '#9b6dff', '#ffffff']
 
@@ -29,7 +30,7 @@ export default function RewardOverlay({ onNavigate }) {
 }
 
 function Celebration({ reward, onNavigate }) {
-  const { dismissReward: dismiss, look } = useUser()
+  const { dismissReward: dismiss, look, profile } = useUser()
   const { from, to, levelsGained } = reward
   // Group quests: collecting takes you to Quests → Done with the quest highlighted.
   const dismissReward = () => {
@@ -122,6 +123,11 @@ function Celebration({ reward, onNavigate }) {
             </div>
           </div>
 
+          {leveled && stageFor(from.level) !== stageFor(to.level) && (
+            <p className="mt-3 animate-pop rounded-xl border-[3px] border-outline bg-gold p-2 text-center font-display uppercase text-on-accent">
+              ⚡ {profile.companionName} evolved into a {STAGES[stageFor(to.level)].name}!
+            </p>
+          )}
           {leveled && unlocked.length > 0 && (
             <div className="mt-3 animate-pop">
               <p className="mb-1.5 flex items-center gap-1 font-display text-sm uppercase tracking-wider text-muted">
@@ -130,7 +136,6 @@ function Celebration({ reward, onNavigate }) {
               <div className="flex flex-wrap gap-1.5">
                 {unlocked.map((i) => (
                   <span key={i.id} className="pill bg-pink text-white">
-                    {i.slot === 'item' && <GearIcon item={i.value} className="h-4 w-3" />}
                     {i.name}
                   </span>
                 ))}
